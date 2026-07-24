@@ -10,11 +10,22 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.clock import Clock
 from kivy.graphics.texture import Texture
+from kivy.graphics import Color, Rectangle
+from kivy.uix.spinner import Spinner
+from kivy.uix.checkbox import CheckBox
+from kivy.uix.progressbar import ProgressBar
 import cv2
 import threading
 import json
 import os
 import time
+import sqlite3
+import ctypes
+import string
+import shutil
+import tkinter as tk
+from tkinter import filedialog
+from controls import BottomControlBar, RightControlPanel, PlaybackInfoPanel
 
 class CV2Colors:
     YELLOW = (0, 255, 255)
@@ -28,9 +39,30 @@ class DuctbotUI(BoxLayout):
         self.capture = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         self.lane_enabled = False
         self.is_recording = False
+        self.is_recording_paused = False
         self.video_writer = None
         self.is_paused = False
         self.playback_mode = False
+        
+        self.video_dir = "videos"
+        if not os.path.exists(self.video_dir):
+            os.makedirs(self.video_dir)
+            
+        self.db_dir = "database"
+        if not os.path.exists(self.db_dir):
+            os.makedirs(self.db_dir)
+            
+        # Move existing database to the new folder if it exists in the root
+        if os.path.exists('recordings.db') and not os.path.exists(os.path.join(self.db_dir, 'recordings.db')):
+            try:
+                import shutil
+                shutil.move('recordings.db', os.path.join(self.db_dir, 'recordings.db'))
+                print("Moved recordings.db to database folder.")
+            except Exception as e:
+                print(f"Failed to move database: {e}")
+                
+        self.db_conn = sqlite3.connect(os.path.join(self.db_dir, 'recordings.db'))
+        self.setup_database()
         
         self.recordings = self.load_recordings()
         
@@ -52,66 +84,103 @@ class DuctbotUI(BoxLayout):
         
         # Playback list area (hidden by default)
         self.list_view = ScrollView(size_hint=(1, 1))
-        self.list_layout = GridLayout(cols=1, spacing=10, padding=10, size_hint_y=None)
+        
+        # Add white background to the scroll view
+        with self.list_view.canvas.before:
+            Color(1, 1, 1, 1)
+            self.list_view.lv_bg = Rectangle(size=self.list_view.size, pos=self.list_view.pos)
+        def update_lv_bg(instance, value):
+            instance.lv_bg.pos = instance.pos
+            instance.lv_bg.size = instance.size
+        self.list_view.bind(pos=update_lv_bg, size=update_lv_bg)
+        
+        self.list_layout = GridLayout(cols=1, spacing=2, padding=10, size_hint_y=None)
         self.list_layout.bind(minimum_height=self.list_layout.setter('height'))
         self.list_view.add_widget(self.list_layout)
         
         # Control panel at bottom of video
-        control_bar = BoxLayout(size_hint_y=None, height='96dp', spacing=5, padding=5)
-        self.left_panel.add_widget(control_bar)
-        
-        # Shutdown button
-        btn_shutdown = Button(text='Shutdown', background_normal='', background_color=[0.9, 0.3, 0.3, 1])
-        btn_shutdown.bind(on_press=lambda x: self.shutdown_system())
-        control_bar.add_widget(btn_shutdown)
-        
-        # Live/Playback toggle
-        self.btn_live = ToggleButton(text='Playback', state='normal', background_normal='', background_color=[0.2, 0.6, 0.8, 1])
-        self.btn_live.bind(on_press=self.toggle_live_mode)
-        control_bar.add_widget(self.btn_live)
-        
-        # Start/Pause button
-        self.btn_play = Button(text='Start Recording', background_normal='', background_color=[0.3, 0.8, 0.3, 1])
-        self.btn_play.bind(on_press=self.play_pause)
-        control_bar.add_widget(self.btn_play)
+        bottom_callbacks = {
+            'shutdown': lambda x: self.shutdown_system(),
+            'toggle_live': self.toggle_live_mode,
+            'play_pause': self.play_pause,
+            'export': lambda x: self.open_export_manager()
+        }
+        self.control_bar = BottomControlBar(bottom_callbacks)
+        self.left_panel.add_widget(self.control_bar)
         
         # Right side panel
-        self.right_panel = BoxLayout(orientation='vertical', size_hint_x=0.15, spacing=5, padding=5)
+        right_callbacks = {
+            'stop': lambda x: self.stop_video(),
+            'toggle_lane': self.toggle_lane,
+            'flip': lambda x: self.flip_camera()
+        }
+        self.right_panel = RightControlPanel(right_callbacks)
         self.add_widget(self.right_panel)
-        
-        # Stop button
-        btn_stop = Button(text='Stop', background_normal='', background_color=[0.8, 0.2, 0.2, 1])
-        btn_stop.bind(on_press=lambda x: self.stop_video())
-        self.right_panel.add_widget(btn_stop)
-        
-        # Lane button
-        btn_lane = ToggleButton(text='Lane', background_normal='', background_color=[0.2, 0.4, 0.8, 1])
-        btn_lane.bind(on_press=self.toggle_lane)
-        self.right_panel.add_widget(btn_lane)
-        
-        # Flip camera button
-        btn_flip = Button(text='Flip Camera', background_normal='', background_color=[0.4, 0.4, 0.6, 1])
-        btn_flip.bind(on_press=lambda x: self.flip_camera())
-        self.right_panel.add_widget(btn_flip)
         
         # Update frame periodically
         Clock.schedule_interval(self.update_frame, 1.0 / 30.0)
 
-    def load_recordings(self):
+    def setup_database(self):
+        cursor = self.db_conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS recordings (
+                serial INTEGER PRIMARY KEY AUTOINCREMENT,
+                client TEXT,
+                area TEXT,
+                side TEXT,
+                filename TEXT
+            )
+        ''')
+        try:
+            cursor.execute("ALTER TABLE recordings ADD COLUMN condition TEXT")
+        except sqlite3.OperationalError:
+            pass # column exists
+            
+        try:
+            cursor.execute("ALTER TABLE recordings ADD COLUMN camera TEXT")
+        except sqlite3.OperationalError:
+            pass # column exists
+            
+        self.db_conn.commit()
+        
+        # Migrate old JSON data if exists
         if os.path.exists('recordings.json'):
             try:
                 with open('recordings.json', 'r') as f:
-                    return json.load(f)
-            except:
-                return []
-        return []
+                    old_data = json.load(f)
+                
+                for rec in old_data:
+                    cursor.execute(
+                        "INSERT INTO recordings (client, area, side, filename) VALUES (?, ?, ?, ?)",
+                        (rec.get('client', ''), rec.get('area', ''), rec.get('side', ''), rec.get('filename', ''))
+                    )
+                self.db_conn.commit()
+                os.rename('recordings.json', 'recordings.json.bak')
+                print("Migrated recordings.json to SQLite database.")
+            except Exception as e:
+                print(f"Error migrating JSON to SQL: {e}")
 
-    def save_recordings(self):
-        with open('recordings.json', 'w') as f:
-            json.dump(self.recordings, f, indent=4)
+    def load_recordings(self):
+        cursor = self.db_conn.cursor()
+        cursor.execute("SELECT serial, client, area, side, filename, condition, camera FROM recordings ORDER BY serial ASC")
+        rows = cursor.fetchall()
+        recordings = []
+        for row in rows:
+            recordings.append({
+                "serial": row[0],
+                "client": row[1],
+                "area": row[2],
+                "side": row[3],
+                "filename": row[4],
+                "condition": row[5] if row[5] else "N/A",
+                "camera": row[6] if row[6] else "N/A"
+            })
+        return recordings
 
     def shutdown_system(self):
         print("Shutting down system...")
+        if hasattr(self, 'db_conn'):
+            self.db_conn.close()
         App.get_running_app().stop()
 
     def toggle_live_mode(self, toggle_btn):
@@ -121,8 +190,19 @@ class DuctbotUI(BoxLayout):
         if toggle_btn.state == 'down':
             # Enter Playback Mode
             self.playback_mode = True
+            
+            # Show export button in playback mode
+            if self.control_bar.btn_export not in self.control_bar.children:
+                self.control_bar.add_widget(self.control_bar.btn_export)
+            # Hide right panel and info panel for full width metadata table
+            if self.right_panel in self.children:
+                self.remove_widget(self.right_panel)
+            if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.children:
+                self.remove_widget(self.playback_info_panel)
+            self.left_panel.size_hint_x = 1.0
+            
             toggle_btn.text = 'Live Mode'
-            self.btn_play.text = 'Start/Pause'
+            self.control_bar.btn_play.text = 'Start/Pause'
             if self.is_recording:
                 self.stop_recording()
             
@@ -133,8 +213,19 @@ class DuctbotUI(BoxLayout):
         else:
             # Enter Live Mode
             self.playback_mode = False
+            
+            # Hide export button in live mode
+            if self.control_bar.btn_export in self.control_bar.children:
+                self.control_bar.remove_widget(self.control_bar.btn_export)
             toggle_btn.text = 'Playback'
-            self.btn_play.text = 'Start Recording'
+            self.control_bar.btn_play.text = 'Start Recording'
+            
+            # Restore right panel
+            if self.right_panel not in self.children:
+                self.add_widget(self.right_panel)
+            if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.children:
+                self.remove_widget(self.playback_info_panel)
+            self.left_panel.size_hint_x = 0.85
             
             # Show video, hide list
             self.display_area.clear_widgets()
@@ -144,24 +235,75 @@ class DuctbotUI(BoxLayout):
 
     def populate_playback_list(self):
         self.list_layout.clear_widgets()
+        
+        # Header Row
+        header = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', spacing=5)
+        with header.canvas.before:
+            Color(0.85, 0.85, 0.85, 1)
+            header.bg_rect = Rectangle(size=header.size, pos=header.pos)
+        def update_header_bg(instance, value):
+            instance.bg_rect.pos = instance.pos
+            instance.bg_rect.size = instance.size
+        header.bind(pos=update_header_bg, size=update_header_bg)
+        
+        headers = [("S.No", 0.1), ("Client", 0.2), ("Area", 0.2), 
+                   ("Side", 0.15), ("Cond", 0.1), ("Cam", 0.1), ("Action", 0.15)]
+        for text, width in headers:
+            header.add_widget(Label(text=text, size_hint_x=width, bold=True, color=(0, 0, 0, 1)))
+        self.list_layout.add_widget(header)
+        
         if not self.recordings:
-            self.list_layout.add_widget(Label(text="No recordings found.", size_hint_y=None, height=40))
+            self.list_layout.add_widget(Label(text="No recordings found.", size_hint_y=None, height=40, color=(0, 0, 0, 1)))
             return
             
         for rec in reversed(self.recordings):
-            btn_text = f"Sr No: {rec['serial']} | Client: {rec['client']} | Area: {rec['area']} | Side: {rec['side']}"
-            btn = Button(text=btn_text, size_hint_y=None, height='60dp', background_color=[0.3, 0.3, 0.4, 1])
-            # Default arg allows late binding in lambda
-            btn.bind(on_press=lambda instance, f=rec['filename']: self.start_playback_video(f))
-            self.list_layout.add_widget(btn)
+            row = BoxLayout(orientation='horizontal', size_hint_y=None, height='50dp', spacing=5)
+            
+            with row.canvas.after:
+                Color(0.9, 0.9, 0.9, 1)
+                row.border_rect = Rectangle(size=(row.width, 1), pos=row.pos)
+            def update_row_border(instance, value):
+                instance.border_rect.pos = instance.pos
+                instance.border_rect.size = (instance.width, 1)
+            row.bind(pos=update_row_border, size=update_row_border)
+            
+            row.add_widget(Label(text=str(rec['serial']), size_hint_x=0.1, color=(0, 0, 0, 1)))
+            row.add_widget(Label(text=rec['client'], size_hint_x=0.2, color=(0, 0, 0, 1)))
+            row.add_widget(Label(text=rec['area'], size_hint_x=0.2, color=(0, 0, 0, 1)))
+            row.add_widget(Label(text=rec['side'], size_hint_x=0.15, color=(0, 0, 0, 1)))
+            row.add_widget(Label(text=rec.get('condition', 'N/A'), size_hint_x=0.1, color=(0, 0, 0, 1)))
+            row.add_widget(Label(text=rec.get('camera', 'N/A'), size_hint_x=0.1, color=(0, 0, 0, 1)))
+            
+            # Wrap play button in a mini boxlayout to give it some padding so it doesn't touch the borders
+            btn_box = BoxLayout(size_hint_x=0.15, padding=[5, 5, 5, 5])
+            btn_play = Button(text='Play', background_color=[0.2, 0.8, 0.2, 1], color=(1, 1, 1, 1))
+            btn_play.bind(on_press=lambda instance, r=rec: self.start_playback_video(r))
+            btn_box.add_widget(btn_play)
+            
+            row.add_widget(btn_box)
+            self.list_layout.add_widget(row)
 
-    def start_playback_video(self, filename):
+    def start_playback_video(self, rec):
+        filename = rec['filename']
         self.display_area.clear_widgets()
         self.display_area.add_widget(self.image)
         if self.capture:
             self.capture.release()
         self.capture = cv2.VideoCapture(filename)
         self.is_paused = False
+        
+        # Remove normal right panel if present
+        if self.right_panel in self.children:
+            self.remove_widget(self.right_panel)
+            
+        # Show playback info panel
+        if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.children:
+            self.remove_widget(self.playback_info_panel)
+            
+        callbacks = {'stop': lambda x: self.stop_video()}
+        self.playback_info_panel = PlaybackInfoPanel(callbacks, rec)
+        self.add_widget(self.playback_info_panel)
+        self.left_panel.size_hint_x = 0.85
 
     def play_pause(self, instance):
         if not self.playback_mode:
@@ -169,7 +311,11 @@ class DuctbotUI(BoxLayout):
             if not self.is_recording:
                 self.open_recording_form()
             else:
-                self.stop_recording()
+                self.is_recording_paused = not self.is_recording_paused
+                if self.is_recording_paused:
+                    self.control_bar.btn_play.text = 'Resume Recording'
+                else:
+                    self.control_bar.btn_play.text = 'Pause Recording'
         else:
             # Playback Mode -> Play/Pause video
             self.is_paused = not self.is_paused
@@ -187,37 +333,89 @@ class DuctbotUI(BoxLayout):
         content.add_widget(self.inp_area)
         content.add_widget(self.inp_side)
         
+        # Condition row
+        cond_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', spacing=5)
+        cond_layout.add_widget(Label(text="Condition:"))
+        self.btn_cond_before = ToggleButton(text='Before', group='condition')
+        self.btn_cond_after = ToggleButton(text='After', group='condition')
+        cond_layout.add_widget(self.btn_cond_before)
+        cond_layout.add_widget(self.btn_cond_after)
+        content.add_widget(cond_layout)
+        
+        # Camera row
+        cam_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', spacing=5)
+        cam_layout.add_widget(Label(text="Camera:"))
+        self.btn_cam_front = ToggleButton(text='Front', group='camera')
+        self.btn_cam_rear = ToggleButton(text='Rear', group='camera')
+        cam_layout.add_widget(self.btn_cam_front)
+        cam_layout.add_widget(self.btn_cam_rear)
+        content.add_widget(cam_layout)
+        
         submit_btn = Button(text='Submit', size_hint_y=None, height='48dp', background_color=[0.2, 0.8, 0.2, 1])
         submit_btn.bind(on_press=self.submit_recording_form)
         content.add_widget(submit_btn)
         
-        self.popup = Popup(title='Start Recording', content=content, size_hint=(0.5, 0.5))
+        self.popup = Popup(title='Start Recording', content=content, size_hint=(0.6, 0.7))
         self.popup.open()
 
+    def reset_submit_btn(self, instance):
+        instance.text = 'Submit'
+        instance.background_color = [0.2, 0.8, 0.2, 1]
+
     def submit_recording_form(self, instance):
-        client = self.inp_client.text.strip() or "Unknown"
-        area = self.inp_area.text.strip() or "Unknown"
-        side = self.inp_side.text.strip() or "Unknown"
+        client = self.inp_client.text.strip()
+        area = self.inp_area.text.strip()
+        side = self.inp_side.text.strip()
         
-        serial_no = len(self.recordings) + 1
+        cond_selected = self.btn_cond_before.state == 'down' or self.btn_cond_after.state == 'down'
+        cam_selected = self.btn_cam_front.state == 'down' or self.btn_cam_rear.state == 'down'
+        
+        if not client or not area or not side or not cond_selected or not cam_selected:
+            instance.text = "Please fill all fields!"
+            instance.background_color = [0.9, 0.2, 0.2, 1]
+            Clock.schedule_once(lambda dt: self.reset_submit_btn(instance), 2)
+            return
+        
         timestamp = int(time.time())
-        filename = f"video_{timestamp}.mp4"
+        filename = os.path.join(self.video_dir, f"video_{timestamp}.mp4")
         
-        self.recordings.append({
+        condition = "Before" if getattr(self, 'btn_cond_before', None) and self.btn_cond_before.state == 'down' else "After"
+        camera = "Front" if getattr(self, 'btn_cam_front', None) and self.btn_cam_front.state == 'down' else "Rear"
+        
+        cursor = self.db_conn.cursor()
+        cursor.execute(
+            "INSERT INTO recordings (client, area, side, condition, camera, filename) VALUES (?, ?, ?, ?, ?, ?)",
+            (client, area, side, condition, camera, filename)
+        )
+        self.db_conn.commit()
+        
+        # Reload recordings to update the UI list properly
+        self.recordings = self.load_recordings()
+        serial_no = self.recordings[-1]['serial'] if self.recordings else 0
+        
+        # Save sidecar metadata JSON
+        meta_filename = os.path.join(self.video_dir, f"video_{timestamp}.json")
+        meta_data = {
             "serial": serial_no,
             "client": client,
             "area": area,
             "side": side,
+            "condition": condition,
+            "camera": camera,
+            "timestamp": timestamp,
             "filename": filename
-        })
-        self.save_recordings()
+        }
+        with open(meta_filename, 'w') as f:
+            json.dump(meta_data, f, indent=4)
+        
         self.popup.dismiss()
         
         self.start_recording(filename)
 
     def start_recording(self, filename):
         self.is_recording = True
-        self.btn_play.text = 'Stop Recording'
+        self.is_recording_paused = False
+        self.control_bar.btn_play.text = 'Pause Recording'
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -228,21 +426,33 @@ class DuctbotUI(BoxLayout):
 
     def stop_recording(self):
         self.is_recording = False
-        self.btn_play.text = 'Start Recording'
+        self.is_recording_paused = False
+        self.control_bar.btn_play.text = 'Start Recording'
         if self.video_writer:
             self.video_writer.release()
             self.video_writer = None
         print("Recording stopped.")
 
     def stop_video(self):
-        if self.capture:
-            self.capture.release()
-            self.capture = None
-            if self.playback_mode:
+        if self.playback_mode:
+            if self.capture:
+                self.capture.release()
+                self.capture = None
+                # Hide right panel and info panel for the table
+                if self.right_panel in self.children:
+                    self.remove_widget(self.right_panel)
+                if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.children:
+                    self.remove_widget(self.playback_info_panel)
+                self.left_panel.size_hint_x = 1.0
+                
                 # Go back to the video list
                 self.display_area.clear_widgets()
                 self.display_area.add_widget(self.list_view)
                 self.populate_playback_list()
+        else:
+            # In Live Mode, this stops the recording!
+            if self.is_recording:
+                self.stop_recording()
 
     def toggle_lane(self, toggle_btn):
         self.lane_enabled = (toggle_btn.state == 'down')
@@ -331,18 +541,24 @@ class DuctbotUI(BoxLayout):
             if ret:
                 # Save clean frame if recording in live mode
                 if getattr(self, 'is_recording', False) and getattr(self, 'video_writer', None):
-                    self.video_writer.write(frame)
+                    if not getattr(self, 'is_recording_paused', False):
+                        self.video_writer.write(frame)
 
                 if self.lane_enabled:
                     frame = self._draw_lane_guides(frame)
                 
                 # Draw REC overlay if recording
                 if self.is_recording:
-                    # Flash logic using time.time()
-                    if int(time.time() * 2) % 2 == 0:
-                        cv2.circle(frame, (frame.shape[1] - 80, 40), 10, CV2Colors.RED, -1)
-                        cv2.putText(frame, "REC", (frame.shape[1] - 60, 45), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, CV2Colors.RED, 2, cv2.LINE_AA)
+                    if self.is_recording_paused:
+                        cv2.circle(frame, (frame.shape[1] - 120, 40), 10, CV2Colors.YELLOW, -1)
+                        cv2.putText(frame, "PAUSED", (frame.shape[1] - 100, 45), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, CV2Colors.YELLOW, 2, cv2.LINE_AA)
+                    else:
+                        # Flash logic using time.time()
+                        if int(time.time() * 2) % 2 == 0:
+                            cv2.circle(frame, (frame.shape[1] - 80, 40), 10, CV2Colors.RED, -1)
+                            cv2.putText(frame, "REC", (frame.shape[1] - 60, 45), 
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, CV2Colors.RED, 2, cv2.LINE_AA)
 
                 # We need to flip it vertically because Kivy's origin is bottom-left
                 frame = cv2.flip(frame, 0)
@@ -354,6 +570,206 @@ class DuctbotUI(BoxLayout):
                 # Loop video if it ends in playback mode
                 if self.playback_mode:
                     self.capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+    def get_usb_drives(self):
+        drive_bitmask = ctypes.cdll.kernel32.GetLogicalDrives()
+        drives = []
+        for i, letter in enumerate(string.ascii_uppercase):
+            if (drive_bitmask >> i) & 1:
+                drives.append(f"{letter}:\\")
+        usb_drives = [d for d in drives if ctypes.cdll.kernel32.GetDriveTypeW(d) == 2]
+        return usb_drives
+
+    def open_export_manager(self):
+        content = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        
+        # Videos List
+        content.add_widget(Label(text="Select Videos to Export:", size_hint_y=None, height='30dp'))
+        
+        scroll = ScrollView(size_hint=(1, 1))
+        self.export_grid = GridLayout(cols=1, size_hint_y=None, spacing=5)
+        self.export_grid.bind(minimum_height=self.export_grid.setter('height'))
+        
+        self.export_checkboxes = {}
+        for rec in reversed(self.recordings):
+            row = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
+            cb = CheckBox(size_hint_x=0.15)
+            self.export_checkboxes[rec['filename']] = cb
+            lbl_text = f"S.No {rec['serial']} - {rec['client']} ({rec['area']})"
+            lbl = Label(text=lbl_text, size_hint_x=0.85, halign='left')
+            lbl.bind(size=lbl.setter('text_size'))
+            
+            row.add_widget(cb)
+            row.add_widget(lbl)
+            self.export_grid.add_widget(row)
+            
+        scroll.add_widget(self.export_grid)
+        content.add_widget(scroll)
+        
+        # Buttons
+        btn_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', spacing=10)
+        
+        def select_all(instance):
+            for cb in self.export_checkboxes.values():
+                cb.active = True
+                
+        btn_sel_all = Button(text='Select All', background_color=[0.2, 0.6, 0.8, 1])
+        btn_sel_all.bind(on_press=select_all)
+        
+        btn_export = Button(text='Export Selected', background_color=[0.2, 0.8, 0.2, 1])
+        btn_export.bind(on_press=self.execute_export)
+        
+        btn_bar.add_widget(btn_sel_all)
+        btn_bar.add_widget(btn_export)
+        content.add_widget(btn_bar)
+        
+        self.export_popup = Popup(title='Export Manager', content=content, size_hint=(0.7, 0.8))
+        self.export_popup.open()
+
+    def execute_export(self, instance):
+        selected_files = [f for f, cb in self.export_checkboxes.items() if cb.active]
+        
+        if not selected_files:
+            instance.text = "None selected!"
+            instance.background_color = [0.9, 0.2, 0.2, 1]
+            Clock.schedule_once(lambda dt: setattr(instance, 'text', 'Export Selected'), 2)
+            Clock.schedule_once(lambda dt: setattr(instance, 'background_color', [0.2, 0.8, 0.2, 1]), 2)
+            return
+            
+        # Step 2: Select USB and Folder
+        usbs = self.get_usb_drives()
+        if not usbs:
+            content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+            content.add_widget(Label(text='No USB flash drives detected!'))
+            btn = Button(text='Close', size_hint_y=None, height='40dp')
+            content.add_widget(btn)
+            popup = Popup(title='Error', content=content, size_hint=(0.4, 0.4))
+            btn.bind(on_press=popup.dismiss)
+            popup.open()
+            return
+            
+        folder_content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        
+        drive_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', spacing=10)
+        drive_bar.add_widget(Label(text="Select USB:", size_hint_x=0.3))
+        usb_spinner = Spinner(text=usbs[0], values=usbs, size_hint_x=0.7)
+        drive_bar.add_widget(usb_spinner)
+        folder_content.add_widget(drive_bar)
+        
+        folder_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', spacing=10)
+        folder_bar.add_widget(Label(text="Folder Name:", size_hint_x=0.3))
+        folder_input = TextInput(text="Ductbot_Exports", multiline=False, size_hint_x=0.7)
+        folder_bar.add_widget(folder_input)
+        folder_content.add_widget(folder_bar)
+        
+        btn_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', spacing=10)
+        start_btn = Button(text="Start Export", background_color=[0.2, 0.8, 0.2, 1])
+        cancel_select_btn = Button(text="Cancel", background_color=[0.9, 0.2, 0.2, 1])
+        btn_bar.add_widget(start_btn)
+        btn_bar.add_widget(cancel_select_btn)
+        folder_content.add_widget(btn_bar)
+        
+        folder_popup = Popup(title='Select Export Destination', content=folder_content, size_hint=(0.6, 0.4), auto_dismiss=False)
+        cancel_select_btn.bind(on_press=folder_popup.dismiss)
+        folder_popup.open()
+            
+        def on_start_export(btn):
+            folder_popup.dismiss()
+            target_drive = usb_spinner.text
+            folder_name = folder_input.text.strip()
+            if not folder_name:
+                folder_name = "Ductbot_Exports"
+                
+            export_dir = os.path.join(target_drive, folder_name)
+            start_progress_ui(export_dir)
+            
+        start_btn.bind(on_press=on_start_export)
+            
+        def start_progress_ui(export_dir):
+            # Build Progress UI
+            progress_content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+            self.progress_label = Label(text="Starting export...")
+            self.progress_bar = ProgressBar(max=100, value=0)
+            
+            self.cancel_export = False
+            def on_cancel(btn):
+                self.cancel_export = True
+                btn.text = "Cancelling..."
+                btn.disabled = True
+                
+            cancel_btn = Button(text="Cancel", size_hint_y=None, height='40dp', background_color=[0.9, 0.2, 0.2, 1])
+            cancel_btn.bind(on_press=on_cancel)
+            
+            progress_content.add_widget(self.progress_label)
+            progress_content.add_widget(self.progress_bar)
+            progress_content.add_widget(cancel_btn)
+            
+            self.progress_popup = Popup(title='Export Progress', content=progress_content, size_hint=(0.6, 0.4), auto_dismiss=False)
+            self.progress_popup.open()
+            
+            def do_export():
+                try:
+                    if not os.path.exists(export_dir):
+                        os.makedirs(export_dir)
+                        
+                    total_files = len(selected_files)
+                    for i, f in enumerate(selected_files):
+                        if self.cancel_export:
+                            break
+                            
+                        basename = os.path.basename(f)
+                        Clock.schedule_once(lambda dt, text=f"Exporting {i+1} of {total_files}: {basename}": setattr(self.progress_label, 'text', text), 0)
+                        Clock.schedule_once(lambda dt: setattr(self.progress_bar, 'value', 0), 0)
+                        
+                        # Chunked copy of MP4
+                        dst_mp4 = os.path.join(export_dir, basename)
+                        total_size = os.path.getsize(f)
+                        copied = 0
+                        with open(f, 'rb') as fsrc, open(dst_mp4, 'wb') as fdst:
+                            while True:
+                                if self.cancel_export:
+                                    break
+                                buf = fsrc.read(1024 * 1024) # 1MB chunk
+                                if not buf:
+                                    break
+                                fdst.write(buf)
+                                copied += len(buf)
+                                if total_size > 0:
+                                    pct = (copied / total_size) * 100
+                                    Clock.schedule_once(lambda dt, p=pct: setattr(self.progress_bar, 'value', p), 0)
+                                    
+                        if self.cancel_export:
+                            try: os.remove(dst_mp4)
+                            except: pass
+                            break
+                            
+                        # Copy JSON
+                        json_file = f.replace('.mp4', '.json')
+                        if os.path.exists(json_file):
+                            shutil.copy2(json_file, export_dir)
+                            
+                    if self.cancel_export:
+                        Clock.schedule_once(lambda dt: setattr(self.progress_label, 'text', 'Export Cancelled!'), 0)
+                    else:
+                        Clock.schedule_once(lambda dt: setattr(self.progress_label, 'text', 'Done! Export Successful'), 0)
+                        Clock.schedule_once(lambda dt: setattr(self.progress_bar, 'value', 100), 0)
+                        
+                    Clock.schedule_once(lambda dt: setattr(cancel_btn, 'disabled', True), 0)
+                    
+                    def close_popups(dt):
+                        self.progress_popup.dismiss()
+                        if not self.cancel_export:
+                            self.export_popup.dismiss()
+                            
+                    Clock.schedule_once(close_popups, 2)
+                except Exception as e:
+                    print(f"Export Error: {e}")
+                    Clock.schedule_once(lambda dt: setattr(self.progress_label, 'text', f'Error: {str(e)}'), 0)
+                    Clock.schedule_once(lambda dt: setattr(cancel_btn, 'text', 'Close'), 0)
+                    Clock.schedule_once(lambda dt: setattr(cancel_btn, 'disabled', False), 0)
+                    cancel_btn.bind(on_press=self.progress_popup.dismiss)
+                    
+            threading.Thread(target=do_export, daemon=True).start()
 
 class DuctbotApp(App):
     def build(self):
