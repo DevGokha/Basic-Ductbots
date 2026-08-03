@@ -276,7 +276,7 @@ class DuctbotUI(BoxLayout):
             
             # Wrap play button in a mini boxlayout to give it some padding so it doesn't touch the borders
             btn_box = BoxLayout(size_hint_x=0.15, padding=[5, 5, 5, 5])
-            btn_play = Button(text='Play', background_color=[0.2, 0.8, 0.2, 1], color=(1, 1, 1, 1))
+            btn_play = Button(text='Play', background_color=[0.2, 0.5, 0.2, 1], color=(1, 1, 1, 1))
             btn_play.bind(on_press=lambda instance, r=rec: self.start_playback_video(r))
             btn_box.add_widget(btn_play)
             
@@ -351,7 +351,7 @@ class DuctbotUI(BoxLayout):
         cam_layout.add_widget(self.btn_cam_rear)
         content.add_widget(cam_layout)
         
-        submit_btn = Button(text='Submit', size_hint_y=None, height='48dp', background_color=[0.2, 0.8, 0.2, 1])
+        submit_btn = Button(text='Submit', size_hint_y=None, height='48dp', background_color=[0.2, 0.5, 0.2, 1])
         submit_btn.bind(on_press=self.submit_recording_form)
         content.add_widget(submit_btn)
         
@@ -360,7 +360,7 @@ class DuctbotUI(BoxLayout):
 
     def reset_submit_btn(self, instance):
         instance.text = 'Submit'
-        instance.background_color = [0.2, 0.8, 0.2, 1]
+        instance.background_color = [0.2, 0.5, 0.2, 1]
 
     def submit_recording_form(self, instance):
         client = self.inp_client.text.strip()
@@ -372,7 +372,7 @@ class DuctbotUI(BoxLayout):
         
         if not client or not area or not side or not cond_selected or not cam_selected:
             instance.text = "Please fill all fields!"
-            instance.background_color = [0.9, 0.2, 0.2, 1]
+            instance.background_color = [0.6, 0.1, 0.1, 1]
             Clock.schedule_once(lambda dt: self.reset_submit_btn(instance), 2)
             return
         
@@ -613,10 +613,10 @@ class DuctbotUI(BoxLayout):
             for cb in self.export_checkboxes.values():
                 cb.active = True
                 
-        btn_sel_all = Button(text='Select All', background_color=[0.2, 0.6, 0.8, 1])
+        btn_sel_all = Button(text='Select All', background_color=[0.25, 0.3, 0.35, 1])
         btn_sel_all.bind(on_press=select_all)
         
-        btn_export = Button(text='Export Selected', background_color=[0.2, 0.8, 0.2, 1])
+        btn_export = Button(text='Export Selected', background_color=[0.2, 0.5, 0.2, 1])
         btn_export.bind(on_press=self.execute_export)
         
         btn_bar.add_widget(btn_sel_all)
@@ -631,9 +631,9 @@ class DuctbotUI(BoxLayout):
         
         if not selected_files:
             instance.text = "None selected!"
-            instance.background_color = [0.9, 0.2, 0.2, 1]
+            instance.background_color = [0.6, 0.1, 0.1, 1]
             Clock.schedule_once(lambda dt: setattr(instance, 'text', 'Export Selected'), 2)
-            Clock.schedule_once(lambda dt: setattr(instance, 'background_color', [0.2, 0.8, 0.2, 1]), 2)
+            Clock.schedule_once(lambda dt: setattr(instance, 'background_color', [0.2, 0.5, 0.2, 1]), 2)
             return
             
         # Step 2: Select USB and Folder
@@ -663,8 +663,8 @@ class DuctbotUI(BoxLayout):
         folder_content.add_widget(folder_bar)
         
         btn_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', spacing=10)
-        start_btn = Button(text="Start Export", background_color=[0.2, 0.8, 0.2, 1])
-        cancel_select_btn = Button(text="Cancel", background_color=[0.9, 0.2, 0.2, 1])
+        start_btn = Button(text="Start Export", background_color=[0.2, 0.5, 0.2, 1])
+        cancel_select_btn = Button(text="Cancel", background_color=[0.6, 0.1, 0.1, 1])
         btn_bar.add_widget(start_btn)
         btn_bar.add_widget(cancel_select_btn)
         folder_content.add_widget(btn_bar)
@@ -697,7 +697,7 @@ class DuctbotUI(BoxLayout):
                 btn.text = "Cancelling..."
                 btn.disabled = True
                 
-            cancel_btn = Button(text="Cancel", size_hint_y=None, height='40dp', background_color=[0.9, 0.2, 0.2, 1])
+            cancel_btn = Button(text="Cancel", size_hint_y=None, height='40dp', background_color=[0.6, 0.1, 0.1, 1])
             cancel_btn.bind(on_press=on_cancel)
             
             progress_content.add_widget(self.progress_label)
