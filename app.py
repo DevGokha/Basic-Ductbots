@@ -1,5 +1,7 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
+from kivy.core.window import Window
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.image import Image
@@ -771,9 +773,57 @@ class DuctbotUI(BoxLayout):
                     
             threading.Thread(target=do_export, daemon=True).start()
 
+class SplashLoader(FloatLayout):
+    """
+    Displays a full-screen logo for a specified duration before
+    calling a callback to launch the main application interface.
+    """
+    def __init__(self, on_finish_callback, logo_path="logo.png", duration=5, **kwargs):
+        super().__init__(**kwargs)
+        self.on_finish_callback = on_finish_callback
+        
+        if not os.path.exists(logo_path):
+            print(f"[WARNING] Logo not found at {logo_path}")
+            
+        # 1. Create and add the Logo Image widget
+        self.logo_widget = Image(
+            source=logo_path,
+            size_hint=(None, None),
+            size=Window.size,
+            pos=(0, 0),
+            fit_mode="contain" # Ensures the logo keeps its proportions
+        )
+        self.add_widget(self.logo_widget)
+
+        # 2. Bind the window resize event so the logo scales if the window changes
+        Window.bind(size=self._update_size)
+        self._update_size()
+
+        # 3. Schedule the transition to the main UI after 'duration' seconds
+        Clock.schedule_once(self.finish, duration)
+
+    def finish(self, dt=None):
+        # Unbind the resize event and trigger the callback to load the main app
+        Window.unbind(size=self._update_size)
+        self.on_finish_callback()
+
+    def _update_size(self, *args):
+        # Keep the layout and the logo matching the Window size
+        self.size = Window.size
+        if hasattr(self, "logo_widget"):
+            self.logo_widget.size = Window.size
+            self.logo_widget.pos = (0, 0)
+
 class DuctbotApp(App):
     def build(self):
-        return DuctbotUI()
+        self.root = FloatLayout()
+        splash = SplashLoader(on_finish_callback=self.load_main_app, logo_path="logo.png", duration=3)
+        self.root.add_widget(splash)
+        return self.root
+
+    def load_main_app(self):
+        self.root.clear_widgets()
+        self.root.add_widget(DuctbotUI())
 
 if __name__ == '__main__':
     DuctbotApp().run()
