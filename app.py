@@ -778,7 +778,7 @@ class SplashLoader(FloatLayout):
     Displays a full-screen logo for a specified duration before
     calling a callback to launch the main application interface.
     """
-    def __init__(self, on_finish_callback, logo_path="logo.png", duration=5, **kwargs):
+    def __init__(self, on_finish_callback, logo_path="logo.png", duration=10, **kwargs):
         super().__init__(**kwargs)
         self.on_finish_callback = on_finish_callback
         
@@ -817,7 +817,7 @@ class SplashLoader(FloatLayout):
 class DuctbotApp(App):
     def build(self):
         self.root = FloatLayout()
-        splash = SplashLoader(on_finish_callback=self.load_main_app, logo_path="logo.png", duration=3)
+        splash = SplashLoader(on_finish_callback=self.load_main_app, logo_path="logo.png", duration=10)
         self.root.add_widget(splash)
         return self.root
 
