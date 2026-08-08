@@ -57,8 +57,16 @@ class PlaybackInfoPanel(BoxLayout):
         # Metadata labels
         self.add_widget(Label(text="Video Details", bold=True, size_hint_y=0.1))
         
+        import os, time
+        fname = os.path.basename(rec_data.get('filename', ''))
+        try:
+            ts_str = fname.replace('video_', '').split('.')[0]
+            dt_str = time.strftime('%d/%m/%y %H:%M', time.localtime(int(ts_str)))
+        except:
+            dt_str = "Unknown"
+
         details = [
-            f"S.No: {rec_data.get('serial', '')}",
+            f"Date:\n{dt_str}",
             f"Client:\n{rec_data.get('client', '')}",
             f"Area:\n{rec_data.get('area', '')}",
             f"Side:\n{rec_data.get('side', '')}",

@@ -278,7 +278,7 @@ class DuctbotUI(BoxLayout):
             instance.bg_rect.size = instance.size
         header.bind(pos=update_header_bg, size=update_header_bg)
         
-        headers = [("S.No", 0.1), ("Client", 0.2), ("Area", 0.2), 
+        headers = [("Date/Time", 0.15), ("Client", 0.2), ("Area", 0.15), 
                    ("Side", 0.15), ("Cond", 0.1), ("Cam", 0.1), ("Action", 0.15)]
         for text, width in headers:
             header.add_widget(Label(text=text, size_hint_x=width, bold=True, color=(0, 0, 0, 1)))
@@ -299,9 +299,16 @@ class DuctbotUI(BoxLayout):
                 instance.border_rect.size = (instance.width, 1)
             row.bind(pos=update_row_border, size=update_row_border)
             
-            row.add_widget(Label(text=str(rec['serial']), size_hint_x=0.1, color=(0, 0, 0, 1)))
+            fname = os.path.basename(rec['filename'])
+            try:
+                ts_str = fname.replace('video_', '').split('.')[0]
+                dt_str = time.strftime('%d/%m/%y\n%H:%M', time.localtime(int(ts_str)))
+            except:
+                dt_str = "Unknown"
+                
+            row.add_widget(Label(text=dt_str, size_hint_x=0.15, color=(0, 0, 0, 1)))
             row.add_widget(Label(text=rec['client'], size_hint_x=0.2, color=(0, 0, 0, 1)))
-            row.add_widget(Label(text=rec['area'], size_hint_x=0.2, color=(0, 0, 0, 1)))
+            row.add_widget(Label(text=rec['area'], size_hint_x=0.15, color=(0, 0, 0, 1)))
             row.add_widget(Label(text=rec['side'], size_hint_x=0.15, color=(0, 0, 0, 1)))
             row.add_widget(Label(text=rec.get('condition', 'N/A'), size_hint_x=0.1, color=(0, 0, 0, 1)))
             row.add_widget(Label(text=rec.get('camera', 'N/A'), size_hint_x=0.1, color=(0, 0, 0, 1)))
@@ -654,7 +661,13 @@ class DuctbotUI(BoxLayout):
             row = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
             cb = CheckBox(size_hint_x=0.15)
             self.export_checkboxes[rec['filename']] = cb
-            lbl_text = f"S.No {rec['serial']} - {rec['client']} ({rec['area']})"
+            fname = os.path.basename(rec['filename'])
+            try:
+                ts_str = fname.replace('video_', '').split('.')[0]
+                dt_str = time.strftime('%d/%m/%y %H:%M', time.localtime(int(ts_str)))
+            except:
+                dt_str = "Unknown"
+            lbl_text = f"{dt_str} - {rec['client']} ({rec['area']})"
             lbl = Label(text=lbl_text, size_hint_x=0.85, halign='left')
             lbl.bind(size=lbl.setter('text_size'))
             
