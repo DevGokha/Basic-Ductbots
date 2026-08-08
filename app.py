@@ -180,6 +180,27 @@ class DuctbotUI(BoxLayout):
         return recordings
 
     def shutdown_system(self):
+        content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        content.add_widget(Label(text='Are you sure you want to shutdown?'))
+        
+        btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height='40dp')
+        
+        btn_yes = Button(text='Yes', background_color=[0.6, 0.1, 0.1, 1])
+        btn_no = Button(text='No', background_color=[0.25, 0.3, 0.35, 1])
+        
+        btn_layout.add_widget(btn_yes)
+        btn_layout.add_widget(btn_no)
+        content.add_widget(btn_layout)
+        
+        popup = Popup(title='Confirm Shutdown', content=content, size_hint=(0.5, 0.3), auto_dismiss=False)
+        
+        btn_yes.bind(on_press=lambda *args: self.confirm_shutdown(popup))
+        btn_no.bind(on_press=popup.dismiss)
+        
+        popup.open()
+
+    def confirm_shutdown(self, popup):
+        popup.dismiss()
         print("Shutting down system...")
         if hasattr(self, 'db_conn'):
             self.db_conn.close()
