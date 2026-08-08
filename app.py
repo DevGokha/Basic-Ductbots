@@ -27,7 +27,114 @@ import string
 import shutil
 import tkinter as tk
 from tkinter import filedialog
+import calendar
+from datetime import date
 from controls import BottomControlBar, RightControlPanel, PlaybackInfoPanel
+
+class DatePickerPopup(Popup):
+    def __init__(self, callback, **kwargs):
+        super().__init__(title="Select Date Range", size_hint=(0.8, 0.8), **kwargs)
+        self.callback = callback
+        self.current_date = date.today()
+        self.start_date = None
+        self.end_date = None
+        self.build_ui()
+
+    def build_ui(self):
+        self.content = BoxLayout(orientation='vertical', spacing=5)
+        
+        self.lbl_instruction = Label(text="Select Start Date", size_hint_y=None, height='30dp', bold=True, color=(1,1,0,1))
+        self.content.add_widget(self.lbl_instruction)
+        
+        # Header (Month/Year with navigation)
+        header = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
+        btn_prev = Button(text="<", size_hint_x=0.2, background_color=[0.25, 0.3, 0.35, 1])
+        btn_prev.bind(on_press=self.prev_month)
+        self.lbl_month = Label(text=self.current_date.strftime("%B %Y"), size_hint_x=0.6, bold=True)
+        btn_next = Button(text=">", size_hint_x=0.2, background_color=[0.25, 0.3, 0.35, 1])
+        btn_next.bind(on_press=self.next_month)
+        
+        header.add_widget(btn_prev)
+        header.add_widget(self.lbl_month)
+        header.add_widget(btn_next)
+        self.content.add_widget(header)
+        
+        # Days of week
+        days_header = BoxLayout(orientation='horizontal', size_hint_y=None, height='30dp')
+        for d in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
+            days_header.add_widget(Label(text=d, bold=True))
+        self.content.add_widget(days_header)
+        
+        # Calendar Grid
+        self.grid = GridLayout(cols=7, spacing=2)
+        self.content.add_widget(self.grid)
+        
+        # Buttons
+        bottom = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
+        btn_clear = Button(text="Clear Filter", background_color=[0.6, 0.1, 0.1, 1])
+        btn_clear.bind(on_press=self.clear_filter)
+        btn_cancel = Button(text="Cancel", background_color=[0.25, 0.3, 0.35, 1])
+        btn_cancel.bind(on_press=self.dismiss)
+        
+        bottom.add_widget(btn_clear)
+        bottom.add_widget(btn_cancel)
+        self.content.add_widget(bottom)
+        
+        self.populate_grid()
+
+    def populate_grid(self):
+        self.grid.clear_widgets()
+        month_matrix = calendar.monthcalendar(self.current_date.year, self.current_date.month)
+        for week in month_matrix:
+            for day in week:
+                if day == 0:
+                    self.grid.add_widget(Label(text=""))
+                else:
+                    bg_color = [0.2, 0.5, 0.2, 1]
+                    cur = self.current_date.replace(day=day)
+                    if self.start_date and cur == self.start_date:
+                        bg_color = [0.1, 0.4, 0.8, 1]
+                    
+                    btn = Button(text=str(day), background_color=bg_color)
+                    btn.bind(on_press=lambda instance, d=day: self.select_date(d))
+                    self.grid.add_widget(btn)
+
+    def prev_month(self, instance):
+        y, m = self.current_date.year, self.current_date.month
+        m -= 1
+        if m < 1:
+            m = 12
+            y -= 1
+        self.current_date = self.current_date.replace(year=y, month=m, day=1)
+        self.lbl_month.text = self.current_date.strftime("%B %Y")
+        self.populate_grid()
+
+    def next_month(self, instance):
+        y, m = self.current_date.year, self.current_date.month
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+        self.current_date = self.current_date.replace(year=y, month=m, day=1)
+        self.lbl_month.text = self.current_date.strftime("%B %Y")
+        self.populate_grid()
+
+    def select_date(self, day):
+        selected_date = self.current_date.replace(day=day)
+        if self.start_date is None:
+            self.start_date = selected_date
+            self.lbl_instruction.text = "Select End Date"
+            self.populate_grid()
+        else:
+            self.end_date = selected_date
+            if self.end_date < self.start_date:
+                self.start_date, self.end_date = self.end_date, self.start_date
+            self.callback((self.start_date, self.end_date))
+            self.dismiss()
+        
+    def clear_filter(self, instance):
+        self.callback("All")
+        self.dismiss()
 
 class CV2Colors:
     YELLOW = (0, 255, 255)
@@ -371,11 +478,19 @@ class DuctbotUI(BoxLayout):
         # Create popup content
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
         
+        # Upper right cross button
+        top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='30dp')
+        lbl_title = Label(text='Enter Recording Details:', size_hint_x=0.9)
+        lbl_title.bind(size=lbl_title.setter('text_size'))
+        top_bar.add_widget(lbl_title)
+        self.rec_close_btn = Button(text="X", size_hint_x=0.1, background_color=[0.6, 0.1, 0.1, 1])
+        top_bar.add_widget(self.rec_close_btn)
+        content.add_widget(top_bar)
+        
         self.inp_client = TextInput(hint_text='Client Name', multiline=False)
         self.inp_area = TextInput(hint_text='Area Name', multiline=False)
         self.inp_side = TextInput(hint_text='Side Name', multiline=False)
         
-        content.add_widget(Label(text='Enter Recording Details:', size_hint_y=None, height='30dp'))
         content.add_widget(self.inp_client)
         content.add_widget(self.inp_area)
         content.add_widget(self.inp_side)
@@ -403,6 +518,7 @@ class DuctbotUI(BoxLayout):
         content.add_widget(submit_btn)
         
         self.popup = Popup(title='Start Recording', content=content, size_hint=(0.6, 0.7))
+        self.rec_close_btn.bind(on_press=self.popup.dismiss)
         self.popup.open()
 
     def reset_submit_btn(self, instance):
@@ -649,6 +765,20 @@ class DuctbotUI(BoxLayout):
     def open_export_manager(self):
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
         
+        # Upper right cross button
+        top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='30dp')
+        top_bar.add_widget(Label(text="", size_hint_x=0.9)) # Empty space
+        close_btn = Button(text="X", size_hint_x=0.1, background_color=[0.6, 0.1, 0.1, 1])
+        top_bar.add_widget(close_btn)
+        content.add_widget(top_bar)
+        
+        # Filter UI
+        filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height='30dp', spacing=10)
+        filter_layout.add_widget(Label(text="Filter by Date:", size_hint_x=0.4))
+        date_btn = Button(text="All", size_hint_x=0.6, background_color=[0.25, 0.3, 0.35, 1])
+        filter_layout.add_widget(date_btn)
+        content.add_widget(filter_layout)
+        
         # Videos List
         content.add_widget(Label(text="Select Videos to Export:", size_hint_y=None, height='30dp'))
         
@@ -657,24 +787,50 @@ class DuctbotUI(BoxLayout):
         self.export_grid.bind(minimum_height=self.export_grid.setter('height'))
         
         self.export_checkboxes = {}
-        for rec in reversed(self.recordings):
-            row = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
-            cb = CheckBox(size_hint_x=0.15)
-            self.export_checkboxes[rec['filename']] = cb
-            fname = os.path.basename(rec['filename'])
-            try:
-                ts_str = fname.replace('video_', '').split('.')[0]
-                dt_str = time.strftime('%d/%m/%y %H:%M', time.localtime(int(ts_str)))
-            except:
-                dt_str = "Unknown"
-            lbl_text = f"{dt_str} - {rec['client']} ({rec['area']})"
-            lbl = Label(text=lbl_text, size_hint_x=0.85, halign='left')
-            lbl.bind(size=lbl.setter('text_size'))
+        
+        def populate_export_list(filter_data="All"):
+            self.export_grid.clear_widgets()
+            self.export_checkboxes.clear()
+            for rec in reversed(self.recordings):
+                fname = os.path.basename(rec['filename'])
+                try:
+                    ts_str = fname.replace('video_', '').split('.')[0]
+                    t_obj = time.localtime(int(ts_str))
+                    dt_str = time.strftime('%d/%m/%y %H:%M', t_obj)
+                    rec_date = date(t_obj.tm_year, t_obj.tm_mon, t_obj.tm_mday)
+                except:
+                    dt_str = "Unknown"
+                    rec_date = None
+                    
+                if filter_data != "All" and rec_date:
+                    start_date, end_date = filter_data
+                    if not (start_date <= rec_date <= end_date):
+                        continue
+                    
+                row = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp')
+                cb = CheckBox(size_hint_x=0.15)
+                self.export_checkboxes[rec['filename']] = cb
+                lbl_text = f"{dt_str} - {rec['client']} ({rec['area']})"
+                lbl = Label(text=lbl_text, size_hint_x=0.85, halign='left')
+                lbl.bind(size=lbl.setter('text_size'))
+                
+                row.add_widget(cb)
+                row.add_widget(lbl)
+                self.export_grid.add_widget(row)
+                
+        populate_export_list("All")
+        
+        def on_date_selected(selected_data):
+            if selected_data == "All":
+                date_btn.text = "All"
+            else:
+                s_str = selected_data[0].strftime("%d/%m/%y")
+                e_str = selected_data[1].strftime("%d/%m/%y")
+                date_btn.text = f"{s_str} - {e_str}"
+            populate_export_list(selected_data)
             
-            row.add_widget(cb)
-            row.add_widget(lbl)
-            self.export_grid.add_widget(row)
-            
+        date_btn.bind(on_press=lambda x: DatePickerPopup(on_date_selected).open())
+        
         scroll.add_widget(self.export_grid)
         content.add_widget(scroll)
         
@@ -696,6 +852,7 @@ class DuctbotUI(BoxLayout):
         content.add_widget(btn_bar)
         
         self.export_popup = Popup(title='Export Manager', content=content, size_hint=(0.7, 0.8))
+        close_btn.bind(on_press=self.export_popup.dismiss)
         self.export_popup.open()
 
     def execute_export(self, instance):
@@ -884,8 +1041,20 @@ class SplashLoader(FloatLayout):
             self.logo_widget.size = Window.size
             self.logo_widget.pos = (0, 0)
 
+from kivy.lang import Builder
+
 class DuctbotApp(App):
     def build(self):
+        Builder.load_string('''
+<Button>:
+    font_size: '19sp'
+<ToggleButton>:
+    font_size: '19sp'
+<Label>:
+    font_size: '17sp'
+<TextInput>:
+    font_size: '17sp'
+''')
         self.root = FloatLayout()
         splash = SplashLoader(on_finish_callback=self.load_main_app, logo_path="logo.png", duration=10)
         self.root.add_widget(splash)
