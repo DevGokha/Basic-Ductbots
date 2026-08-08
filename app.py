@@ -45,6 +45,8 @@ class DuctbotUI(BoxLayout):
         self.video_writer = None
         self.is_paused = False
         self.playback_mode = False
+        self.is_live_paused = False
+        self.current_camera = "F"
         
         self.video_dir = "videos"
         if not os.path.exists(self.video_dir):
@@ -236,6 +238,10 @@ class DuctbotUI(BoxLayout):
         else:
             # Enter Live Mode
             self.playback_mode = False
+            self.is_live_paused = False
+            if hasattr(self, 'right_panel') and hasattr(self.right_panel, 'btn_stop'):
+                self.right_panel.btn_stop.text = 'Stop'
+                self.right_panel.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
             
             # Hide export button in live mode
             if self.control_bar.btn_export in self.control_bar.children:
@@ -449,6 +455,10 @@ class DuctbotUI(BoxLayout):
     def start_recording(self, filename):
         self.is_recording = True
         self.is_recording_paused = False
+        self.is_live_paused = False
+        if hasattr(self, 'right_panel') and hasattr(self.right_panel, 'btn_stop'):
+            self.right_panel.btn_stop.text = 'Stop'
+            self.right_panel.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
         self.control_bar.btn_play.text = 'Pause Recording'
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -484,15 +494,57 @@ class DuctbotUI(BoxLayout):
                 self.display_area.add_widget(self.list_view)
                 self.populate_playback_list()
         else:
-            # In Live Mode, this stops the recording!
+            # In Live Mode
             if self.is_recording:
-                self.stop_recording()
+                was_paused = getattr(self, 'is_recording_paused', False)
+                self.is_recording_paused = True
+                
+                content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+                content.add_widget(Label(text='Are you sure you want to stop recording?'))
+                
+                btn_layout = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height='40dp')
+                
+                btn_yes = Button(text='Yes', background_color=[0.6, 0.1, 0.1, 1])
+                btn_no = Button(text='No', background_color=[0.25, 0.3, 0.35, 1])
+                
+                btn_layout.add_widget(btn_yes)
+                btn_layout.add_widget(btn_no)
+                content.add_widget(btn_layout)
+                
+                popup = Popup(title='Stop Recording', content=content, size_hint=(0.5, 0.3), auto_dismiss=False)
+                
+                def confirm_stop(*args):
+                    popup.dismiss()
+                    self.stop_recording()
+                    
+                def cancel_stop(*args):
+                    popup.dismiss()
+                    self.is_recording_paused = was_paused
+                    
+                btn_yes.bind(on_press=confirm_stop)
+                btn_no.bind(on_press=cancel_stop)
+                
+                popup.open()
+            else:
+                self.is_live_paused = not self.is_live_paused
+                if hasattr(self, 'right_panel') and hasattr(self.right_panel, 'btn_stop'):
+                    if self.is_live_paused:
+                        self.right_panel.btn_stop.text = 'Resume'
+                        self.right_panel.btn_stop.background_color = [0.2, 0.5, 0.2, 1]
+                    else:
+                        self.right_panel.btn_stop.text = 'Stop'
+                        self.right_panel.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
 
     def toggle_lane(self, toggle_btn):
         self.lane_enabled = (toggle_btn.state == 'down')
 
     def flip_camera(self):
-        print("Flipping camera...")
+        if getattr(self, 'current_camera', 'F') == 'F':
+            self.current_camera = 'R'
+            print("Switched to Rear camera (R)")
+        else:
+            self.current_camera = 'F'
+            print("Switched to Front camera (F)")
 
     def _draw_lane_guides(self, frame):
         h, w = frame.shape[:2]
@@ -527,47 +579,15 @@ class DuctbotUI(BoxLayout):
                     10,
                     2)
         
-        # ---------- TOF SENSOR DISPLAY ----------
-        with self.sensor_lock:
-            tof_l = self.sensor_data.get("TOF_L", 0)
-            tof_r = self.sensor_data.get("TOF_R", 0)
+        # ---------- TOF SENSOR DISPLAY REMOVED ----------
 
-        # Left TOF
-        try:
-            if isinstance(tof_l, (int, float)) and int(tof_l) == -2:
-                left_text = "L: Too far"
-            elif isinstance(tof_l, (int, float)) and int(tof_l) == -1:
-                left_text = "L: Too close"
-            else:
-                left_text = f"L: {tof_l:.0f} mm"
-        except Exception:
-            left_text = "L: --"
-
-        cv2.putText(
-            frame, left_text, (10, h - 120),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 60, 0), 1, cv2.LINE_AA
-        )
-
-        # Right TOF
-        try:
-            if isinstance(tof_r, (int, float)) and int(tof_r) == -2:
-                right_text = "R: Too far"
-            elif isinstance(tof_r, (int, float)) and int(tof_r) == -1:
-                right_text = "R: Too close"
-            else:
-                right_text = f"R: {tof_r:.0f} mm"
-        except Exception:
-            right_text = "R: --"
-
-        cv2.putText(
-            frame, right_text, (w - 100, h - 120),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 60, 0), 1, cv2.LINE_AA
-        )
-            
         return frame
 
     def update_frame(self, dt):
         if self.is_paused and self.playback_mode:
+            return
+            
+        if not self.playback_mode and getattr(self, 'is_live_paused', False):
             return
             
         if self.capture is not None:
@@ -580,6 +600,11 @@ class DuctbotUI(BoxLayout):
 
                 if self.lane_enabled:
                     frame = self._draw_lane_guides(frame)
+                
+                # Draw camera mode indicator (F or R)
+                cam_mode = getattr(self, 'current_camera', 'F')
+                cv2.putText(frame, f"Cam: {cam_mode}", (20, 40), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, CV2Colors.YELLOW, 2, cv2.LINE_AA)
                 
                 # Draw REC overlay if recording
                 if self.is_recording:
