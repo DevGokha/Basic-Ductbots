@@ -10,6 +10,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
+from kivy.uix.widget import Widget
 from kivy.clock import Clock
 from kivy.graphics.texture import Texture
 from kivy.graphics import Color, Rectangle
@@ -143,7 +144,7 @@ class CV2Colors:
 
 class DuctbotUI(BoxLayout):
     def __init__(self, **kwargs):
-        super().__init__(orientation='horizontal', **kwargs)
+        super().__init__(orientation='vertical', **kwargs)
         
         self.capture = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         self.lane_enabled = False
@@ -181,9 +182,32 @@ class DuctbotUI(BoxLayout):
         self.sensor_lock = threading.Lock()
         self.sensor_data = {"TOF_L": 100, "TOF_R": 100}
         
+        # --- Top Bar (Header) - Spans full width ---
+        self.top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', padding=[20, 0, 20, 0])
+        with self.top_bar.canvas.before:
+            Color(0.15, 0.15, 0.15, 1) # Dark background
+            self.top_bar.bg_rect = Rectangle(size=self.top_bar.size, pos=self.top_bar.pos)
+        def update_top_bg(instance, value):
+            instance.bg_rect.pos = instance.pos
+            instance.bg_rect.size = instance.size
+        self.top_bar.bind(pos=update_top_bg, size=update_top_bg)
+        
+        # We need a spacer and center title
+        self.top_bar.add_widget(Widget(size_hint_x=0.2)) # spacer for centering
+        self.top_bar.add_widget(Label(text="ROBOSERV 4i   DUCTBOT", bold=True, halign='center', size_hint_x=0.6))
+        
+        # Add a right spacer to balance the layout since system ready is removed
+        self.top_bar.add_widget(Widget(size_hint_x=0.2))
+        
+        self.add_widget(self.top_bar)
+        
+        # --- Main Body (Horizontal layout for left/right split) ---
+        self.main_body = BoxLayout(orientation='horizontal')
+        self.add_widget(self.main_body)
+        
         # Left main area (Video/List + Bottom controls)
-        self.left_panel = BoxLayout(orientation='vertical', size_hint_x=0.85)
-        self.add_widget(self.left_panel)
+        self.left_panel = BoxLayout(orientation='vertical', size_hint_x=0.84)
+        self.main_body.add_widget(self.left_panel)
         
         # Display area (Can hold either Video or List)
         self.display_area = BoxLayout(orientation='vertical')
@@ -226,7 +250,7 @@ class DuctbotUI(BoxLayout):
             'flip': lambda x: self.flip_camera()
         }
         self.right_panel = RightControlPanel(right_callbacks)
-        self.add_widget(self.right_panel)
+        self.main_body.add_widget(self.right_panel)
         
         # Update frame periodically
         Clock.schedule_interval(self.update_frame, 1.0 / 30.0)
@@ -327,10 +351,10 @@ class DuctbotUI(BoxLayout):
             if self.control_bar.btn_export not in self.control_bar.children:
                 self.control_bar.add_widget(self.control_bar.btn_export)
             # Hide right panel and info panel for full width metadata table
-            if self.right_panel in self.children:
-                self.remove_widget(self.right_panel)
-            if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.children:
-                self.remove_widget(self.playback_info_panel)
+            if self.right_panel in self.main_body.children:
+                self.main_body.remove_widget(self.right_panel)
+            if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.main_body.children:
+                self.main_body.remove_widget(self.playback_info_panel)
             self.left_panel.size_hint_x = 1.0
             
             toggle_btn.text = 'Live Mode'
@@ -357,11 +381,11 @@ class DuctbotUI(BoxLayout):
             self.control_bar.btn_play.text = 'Start Recording'
             
             # Restore right panel
-            if self.right_panel not in self.children:
-                self.add_widget(self.right_panel)
-            if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.children:
-                self.remove_widget(self.playback_info_panel)
-            self.left_panel.size_hint_x = 0.85
+            if self.right_panel not in self.main_body.children:
+                self.main_body.add_widget(self.right_panel)
+            if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.main_body.children:
+                self.main_body.remove_widget(self.playback_info_panel)
+            self.left_panel.size_hint_x = 0.84
             
             # Show video, hide list
             self.display_area.clear_widgets()
@@ -447,17 +471,17 @@ class DuctbotUI(BoxLayout):
         Clock.schedule_interval(self.update_frame, 1.0 / fps)
         
         # Remove normal right panel if present
-        if self.right_panel in self.children:
-            self.remove_widget(self.right_panel)
+        if self.right_panel in self.main_body.children:
+            self.main_body.remove_widget(self.right_panel)
             
         # Show playback info panel
-        if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.children:
-            self.remove_widget(self.playback_info_panel)
+        if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.main_body.children:
+            self.main_body.remove_widget(self.playback_info_panel)
             
         callbacks = {'stop': lambda x: self.stop_video()}
         self.playback_info_panel = PlaybackInfoPanel(callbacks, rec)
-        self.add_widget(self.playback_info_panel)
-        self.left_panel.size_hint_x = 0.85
+        self.main_body.add_widget(self.playback_info_panel)
+        self.left_panel.size_hint_x = 0.84
 
     def play_pause(self, instance):
         if not self.playback_mode:
@@ -726,8 +750,8 @@ class DuctbotUI(BoxLayout):
                 
                 # Draw camera mode indicator (F or R)
                 cam_mode = getattr(self, 'current_camera', 'F')
-                cv2.putText(frame, f"Cam: {cam_mode}", (20, 40), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, CV2Colors.YELLOW, 2, cv2.LINE_AA)
+                cv2.putText(frame, f"Cam: {cam_mode}", (20, 60), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, CV2Colors.YELLOW, 2, cv2.LINE_AA)
                 
                 # Draw REC overlay if recording
                 if self.is_recording:

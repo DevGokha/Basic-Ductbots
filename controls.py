@@ -28,9 +28,9 @@ class BottomControlBar(BoxLayout):
 
 class RightControlPanel(BoxLayout):
     def __init__(self, callbacks, **kwargs):
-        super().__init__(orientation='vertical', size_hint_x=0.15, spacing=5, padding=5, **kwargs)
+        super().__init__(orientation='vertical', size_hint_x=0.16, spacing=5, padding=5, **kwargs)
         
-        # Flip camera button
+        # Flip camera button (equal size)
         self.btn_flip = Button(text='Flip Camera', background_normal='', background_color=[0.25, 0.3, 0.35, 1])
         self.btn_flip.bind(on_press=callbacks.get('flip', lambda x: None))
         self.add_widget(self.btn_flip)
@@ -47,7 +47,7 @@ class RightControlPanel(BoxLayout):
 
 class PlaybackInfoPanel(BoxLayout):
     def __init__(self, callbacks, rec_data, **kwargs):
-        super().__init__(orientation='vertical', size_hint_x=0.15, spacing=5, padding=5, **kwargs)
+        super().__init__(orientation='vertical', size_hint_x=0.16, spacing=5, padding=5, **kwargs)
         
         # Stop button
         self.btn_stop = Button(text='Stop / Back', size_hint_y=0.2, background_normal='', background_color=[0.6, 0.1, 0.1, 1])
@@ -74,6 +74,10 @@ class PlaybackInfoPanel(BoxLayout):
             f"Cam:\n{rec_data.get('camera', '')}"
         ]
         
+        for d in details:
+            lbl = Label(text=d, size_hint_y=0.15, halign='center', valign='middle')
+            lbl.bind(size=lbl.setter('text_size'))
+            self.add_widget(lbl)
         for d in details:
             lbl = Label(text=d, size_hint_y=0.15, halign='center', valign='middle')
             lbl.bind(size=lbl.setter('text_size'))
