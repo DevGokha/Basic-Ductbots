@@ -234,6 +234,9 @@ class DuctbotUI(BoxLayout):
             self.display_area.add_widget(self.image)
             
             self.capture = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+            
+            Clock.unschedule(self.update_frame)
+            Clock.schedule_interval(self.update_frame, 1.0 / 30.0)
 
     def populate_playback_list(self):
         self.list_layout.clear_widgets()
@@ -293,6 +296,14 @@ class DuctbotUI(BoxLayout):
             self.capture.release()
         self.capture = cv2.VideoCapture(filename)
         self.is_paused = False
+        
+        # Adjust playback speed based on video FPS
+        fps = self.capture.get(cv2.CAP_PROP_FPS)
+        if fps <= 0:
+            fps = 20.0
+            
+        Clock.unschedule(self.update_frame)
+        Clock.schedule_interval(self.update_frame, 1.0 / fps)
         
         # Remove normal right panel if present
         if self.right_panel in self.children:
