@@ -5,12 +5,8 @@ from kivy.uix.label import Label
 
 class BottomControlBar(BoxLayout):
     def __init__(self, callbacks, **kwargs):
-        super().__init__(size_hint_y=None, height='96dp', spacing=5, padding=5, **kwargs)
-        
-        # Shutdown button
-        self.btn_shutdown = Button(text='Shutdown', background_normal='', background_color=[0.6, 0.1, 0.1, 1])
-        self.btn_shutdown.bind(on_press=callbacks.get('shutdown', lambda x: None))
-        self.add_widget(self.btn_shutdown)
+        super().__init__(size_hint_y=None, height='110dp', spacing=5, padding=5, **kwargs)
+
         
         # Live/Playback toggle
         self.btn_live = ToggleButton(text='Playback', state='normal', background_normal='', background_color=[0.25, 0.3, 0.35, 1])
@@ -25,12 +21,8 @@ class BottomControlBar(BoxLayout):
         # Export button (created but not added to layout initially because we start in Live Mode)
         self.btn_export = Button(text='Export', background_normal='', background_color=[0.7, 0.4, 0.1, 1])
         self.btn_export.bind(on_press=callbacks.get('export', lambda x: None))
-
-class RightControlPanel(BoxLayout):
-    def __init__(self, callbacks, **kwargs):
-        super().__init__(orientation='vertical', size_hint_x=0.16, spacing=5, padding=5, **kwargs)
         
-        # Flip camera button (equal size)
+        # Flip camera button
         self.btn_flip = Button(text='Flip Camera', background_normal='', background_color=[0.25, 0.3, 0.35, 1])
         self.btn_flip.bind(on_press=callbacks.get('flip', lambda x: None))
         self.add_widget(self.btn_flip)
@@ -44,6 +36,8 @@ class RightControlPanel(BoxLayout):
         self.btn_stop = Button(text='Stop', background_normal='', background_color=[0.6, 0.1, 0.1, 1])
         self.btn_stop.bind(on_press=callbacks.get('stop', lambda x: None))
         self.add_widget(self.btn_stop)
+
+
 
 class PlaybackInfoPanel(BoxLayout):
     def __init__(self, callbacks, rec_data, **kwargs):

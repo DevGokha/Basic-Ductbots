@@ -1,6 +1,7 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 from kivy.core.window import Window
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
@@ -30,7 +31,7 @@ import tkinter as tk
 from tkinter import filedialog
 import calendar
 from datetime import date
-from controls import BottomControlBar, RightControlPanel, PlaybackInfoPanel
+from controls import BottomControlBar
 
 class DatePickerPopup(Popup):
     def __init__(self, callback, **kwargs):
@@ -183,7 +184,7 @@ class DuctbotUI(BoxLayout):
         self.sensor_data = {"TOF_L": 100, "TOF_R": 100}
         
         # --- Top Bar (Header) - Spans full width ---
-        self.top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='40dp', padding=[20, 0, 20, 0])
+        self.top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='46dp', padding=[20, 5, 20, 5], spacing=10)
         with self.top_bar.canvas.before:
             Color(0.15, 0.15, 0.15, 1) # Dark background
             self.top_bar.bg_rect = Rectangle(size=self.top_bar.size, pos=self.top_bar.pos)
@@ -196,8 +197,10 @@ class DuctbotUI(BoxLayout):
         self.top_bar.add_widget(Widget(size_hint_x=0.2)) # spacer for centering
         self.top_bar.add_widget(Label(text="ROBOSERV 4i   DUCTBOT", bold=True, halign='center', size_hint_x=0.6))
         
-        # Add a right spacer to balance the layout since system ready is removed
-        self.top_bar.add_widget(Widget(size_hint_x=0.2))
+        # Shutdown button on the right hand side
+        self.btn_shutdown = Button(text='Shutdown', background_normal='', background_color=[0.6, 0.1, 0.1, 1], size_hint_x=0.2)
+        self.btn_shutdown.bind(on_press=lambda x: self.shutdown_system())
+        self.top_bar.add_widget(self.btn_shutdown)
         
         self.add_widget(self.top_bar)
         
@@ -206,16 +209,27 @@ class DuctbotUI(BoxLayout):
         self.add_widget(self.main_body)
         
         # Left main area (Video/List + Bottom controls)
-        self.left_panel = BoxLayout(orientation='vertical', size_hint_x=0.84)
+        self.left_panel = BoxLayout(orientation='vertical', size_hint_x=1.0)
         self.main_body.add_widget(self.left_panel)
         
-        # Display area (Can hold either Video or List)
-        self.display_area = BoxLayout(orientation='vertical')
+        # Display area as a ScreenManager for sliding transitions
+        self.display_area = ScreenManager(transition=SlideTransition())
         self.left_panel.add_widget(self.display_area)
         
-        # Video feed area
+        # Live Feed Screen
+        self.live_screen = Screen(name='live')
         self.image = Image(allow_stretch=True, keep_ratio=False)
-        self.display_area.add_widget(self.image)
+        self.live_screen.add_widget(self.image)
+        self.display_area.add_widget(self.live_screen)
+        
+        # Playback List Screen
+        self.playback_list_screen = Screen(name='playback_list')
+        
+        # Playback Video Screen
+        self.playback_video_screen = Screen(name='playback_video')
+        self.playback_image = Image(allow_stretch=True, keep_ratio=False)
+        self.playback_video_screen.add_widget(self.playback_image)
+        self.display_area.add_widget(self.playback_video_screen)
         
         # Playback list area (hidden by default)
         self.list_view = ScrollView(size_hint=(1, 1))
@@ -233,24 +247,23 @@ class DuctbotUI(BoxLayout):
         self.list_layout.bind(minimum_height=self.list_layout.setter('height'))
         self.list_view.add_widget(self.list_layout)
         
+        self.playback_list_screen.add_widget(self.list_view)
+        self.display_area.add_widget(self.playback_list_screen)
+        
+        self.display_area.current = 'live'
+        
         # Control panel at bottom of video
         bottom_callbacks = {
             'shutdown': lambda x: self.shutdown_system(),
             'toggle_live': self.toggle_live_mode,
             'play_pause': self.play_pause,
-            'export': lambda x: self.open_export_manager()
-        }
-        self.control_bar = BottomControlBar(bottom_callbacks)
-        self.left_panel.add_widget(self.control_bar)
-        
-        # Right side panel
-        right_callbacks = {
+            'export': lambda x: self.open_export_manager(),
             'stop': lambda x: self.stop_video(),
             'toggle_lane': self.toggle_lane,
             'flip': lambda x: self.flip_camera()
         }
-        self.right_panel = RightControlPanel(right_callbacks)
-        self.main_body.add_widget(self.right_panel)
+        self.control_bar = BottomControlBar(bottom_callbacks)
+        self.left_panel.add_widget(self.control_bar)
         
         # Update frame periodically
         Clock.schedule_interval(self.update_frame, 1.0 / 30.0)
@@ -347,12 +360,16 @@ class DuctbotUI(BoxLayout):
             # Enter Playback Mode
             self.playback_mode = True
             
-            # Show export button in playback mode
+            # Show export button in playback mode, hide live buttons
             if self.control_bar.btn_export not in self.control_bar.children:
                 self.control_bar.add_widget(self.control_bar.btn_export)
-            # Hide right panel and info panel for full width metadata table
-            if self.right_panel in self.main_body.children:
-                self.main_body.remove_widget(self.right_panel)
+            if self.control_bar.btn_flip in self.control_bar.children:
+                self.control_bar.remove_widget(self.control_bar.btn_flip)
+            if self.control_bar.btn_lane in self.control_bar.children:
+                self.control_bar.remove_widget(self.control_bar.btn_lane)
+            if self.control_bar.btn_stop in self.control_bar.children:
+                self.control_bar.remove_widget(self.control_bar.btn_stop)
+            # Hide info panel for full width metadata table
             if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.main_body.children:
                 self.main_body.remove_widget(self.playback_info_panel)
             self.left_panel.size_hint_x = 1.0
@@ -362,34 +379,38 @@ class DuctbotUI(BoxLayout):
             if self.is_recording:
                 self.stop_recording()
             
-            # Show list, hide video
-            self.display_area.clear_widgets()
-            self.display_area.add_widget(self.list_view)
+            # Show list with transition
+            self.display_area.transition.direction = 'left'
+            self.display_area.current = 'playback_list'
             self.populate_playback_list()
         else:
             # Enter Live Mode
             self.playback_mode = False
             self.is_live_paused = False
-            if hasattr(self, 'right_panel') and hasattr(self.right_panel, 'btn_stop'):
-                self.right_panel.btn_stop.text = 'Stop'
-                self.right_panel.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
+            if hasattr(self, 'control_bar') and hasattr(self.control_bar, 'btn_stop'):
+                self.control_bar.btn_stop.text = 'Stop'
+                self.control_bar.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
             
-            # Hide export button in live mode
+            # Hide export button in live mode, restore live buttons
             if self.control_bar.btn_export in self.control_bar.children:
                 self.control_bar.remove_widget(self.control_bar.btn_export)
+            if self.control_bar.btn_flip not in self.control_bar.children:
+                self.control_bar.add_widget(self.control_bar.btn_flip)
+            if self.control_bar.btn_lane not in self.control_bar.children:
+                self.control_bar.add_widget(self.control_bar.btn_lane)
+            if self.control_bar.btn_stop not in self.control_bar.children:
+                self.control_bar.add_widget(self.control_bar.btn_stop)
             toggle_btn.text = 'Playback'
             self.control_bar.btn_play.text = 'Start Recording'
             
-            # Restore right panel
-            if self.right_panel not in self.main_body.children:
-                self.main_body.add_widget(self.right_panel)
+            # Restore info panel if needed
             if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.main_body.children:
                 self.main_body.remove_widget(self.playback_info_panel)
-            self.left_panel.size_hint_x = 0.84
+            self.left_panel.size_hint_x = 1.0
             
-            # Show video, hide list
-            self.display_area.clear_widgets()
-            self.display_area.add_widget(self.image)
+            # Show video with transition
+            self.display_area.transition.direction = 'right'
+            self.display_area.current = 'live'
             
             self.capture = cv2.VideoCapture(0, cv2.CAP_DSHOW)
             
@@ -455,8 +476,8 @@ class DuctbotUI(BoxLayout):
 
     def start_playback_video(self, rec):
         filename = rec['filename']
-        self.display_area.clear_widgets()
-        self.display_area.add_widget(self.image)
+        self.display_area.transition.direction = 'left'
+        self.display_area.current = 'playback_video'
         if self.capture:
             self.capture.release()
         self.capture = cv2.VideoCapture(filename)
@@ -469,19 +490,7 @@ class DuctbotUI(BoxLayout):
             
         Clock.unschedule(self.update_frame)
         Clock.schedule_interval(self.update_frame, 1.0 / fps)
-        
-        # Remove normal right panel if present
-        if self.right_panel in self.main_body.children:
-            self.main_body.remove_widget(self.right_panel)
-            
-        # Show playback info panel
-        if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.main_body.children:
-            self.main_body.remove_widget(self.playback_info_panel)
-            
-        callbacks = {'stop': lambda x: self.stop_video()}
-        self.playback_info_panel = PlaybackInfoPanel(callbacks, rec)
-        self.main_body.add_widget(self.playback_info_panel)
-        self.left_panel.size_hint_x = 0.84
+
 
     def play_pause(self, instance):
         if not self.playback_mode:
@@ -603,9 +612,9 @@ class DuctbotUI(BoxLayout):
         self.is_recording = True
         self.is_recording_paused = False
         self.is_live_paused = False
-        if hasattr(self, 'right_panel') and hasattr(self.right_panel, 'btn_stop'):
-            self.right_panel.btn_stop.text = 'Stop'
-            self.right_panel.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
+        if hasattr(self, 'control_bar') and hasattr(self.control_bar, 'btn_stop'):
+            self.control_bar.btn_stop.text = 'Stop'
+            self.control_bar.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
         self.control_bar.btn_play.text = 'Pause Recording'
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -629,16 +638,14 @@ class DuctbotUI(BoxLayout):
             if self.capture:
                 self.capture.release()
                 self.capture = None
-                # Hide right panel and info panel for the table
-                if self.right_panel in self.children:
-                    self.remove_widget(self.right_panel)
+                # Hide info panel for the table
                 if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.children:
                     self.remove_widget(self.playback_info_panel)
                 self.left_panel.size_hint_x = 1.0
                 
-                # Go back to the video list
-                self.display_area.clear_widgets()
-                self.display_area.add_widget(self.list_view)
+                # Go back to the video list with transition
+                self.display_area.transition.direction = 'right'
+                self.display_area.current = 'playback_list'
                 self.populate_playback_list()
         else:
             # In Live Mode
@@ -674,13 +681,13 @@ class DuctbotUI(BoxLayout):
                 popup.open()
             else:
                 self.is_live_paused = not self.is_live_paused
-                if hasattr(self, 'right_panel') and hasattr(self.right_panel, 'btn_stop'):
+                if hasattr(self, 'control_bar') and hasattr(self.control_bar, 'btn_stop'):
                     if self.is_live_paused:
-                        self.right_panel.btn_stop.text = 'Resume'
-                        self.right_panel.btn_stop.background_color = [0.2, 0.5, 0.2, 1]
+                        self.control_bar.btn_stop.text = 'Resume'
+                        self.control_bar.btn_stop.background_color = [0.2, 0.5, 0.2, 1]
                     else:
-                        self.right_panel.btn_stop.text = 'Stop'
-                        self.right_panel.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
+                        self.control_bar.btn_stop.text = 'Stop'
+                        self.control_bar.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
 
     def toggle_lane(self, toggle_btn):
         self.lane_enabled = (toggle_btn.state == 'down')
@@ -771,7 +778,10 @@ class DuctbotUI(BoxLayout):
                 buffer = frame.tobytes()
                 texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
                 texture.blit_buffer(buffer, colorfmt='bgr', bufferfmt='ubyte')
-                self.image.texture = texture
+                if self.playback_mode:
+                    self.playback_image.texture = texture
+                else:
+                    self.image.texture = texture
             else:
                 # Loop video if it ends in playback mode
                 if self.playback_mode:
