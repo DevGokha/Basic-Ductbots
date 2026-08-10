@@ -198,7 +198,18 @@ class DuctbotUI(BoxLayout):
         self.top_bar.add_widget(Label(text="ROBOSERV 4i   DUCTBOT", bold=True, halign='center', size_hint_x=0.6))
         
         # Shutdown button on the right hand side
-        self.btn_shutdown = Button(text='Shutdown', background_normal='', background_color=[0.6, 0.1, 0.1, 1], size_hint_x=0.2)
+        from kivy.factory import Factory
+        from kivy.uix.image import Image
+        from kivy.metrics import dp
+        self.btn_shutdown = Factory.RedButton(text='     Shutdown', size_hint_x=0.2)
+        
+        self.power_icon = Image(source='power_icon.png', size_hint=(None, None), size=(dp(24), dp(24)))
+        def update_power_icon(instance, value):
+            self.power_icon.center_y = instance.center_y
+            self.power_icon.x = instance.x + dp(15)
+        self.btn_shutdown.bind(pos=update_power_icon, size=update_power_icon)
+        self.btn_shutdown.add_widget(self.power_icon)
+        
         self.btn_shutdown.bind(on_press=lambda x: self.shutdown_system())
         self.top_bar.add_widget(self.btn_shutdown)
         
@@ -353,6 +364,11 @@ class DuctbotUI(BoxLayout):
         App.get_running_app().stop()
 
     def toggle_live_mode(self, toggle_btn):
+        if toggle_btn.text == 'Stop':
+            toggle_btn.state = 'normal'
+            self.stop_video()
+            return
+
         if self.capture:
             self.capture.release()
             
@@ -367,8 +383,6 @@ class DuctbotUI(BoxLayout):
                 self.control_bar.remove_widget(self.control_bar.btn_flip)
             if self.control_bar.btn_lane in self.control_bar.children:
                 self.control_bar.remove_widget(self.control_bar.btn_lane)
-            if self.control_bar.btn_stop in self.control_bar.children:
-                self.control_bar.remove_widget(self.control_bar.btn_stop)
             # Hide info panel for full width metadata table
             if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.main_body.children:
                 self.main_body.remove_widget(self.playback_info_panel)
@@ -387,9 +401,6 @@ class DuctbotUI(BoxLayout):
             # Enter Live Mode
             self.playback_mode = False
             self.is_live_paused = False
-            if hasattr(self, 'control_bar') and hasattr(self.control_bar, 'btn_stop'):
-                self.control_bar.btn_stop.text = 'Stop'
-                self.control_bar.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
             
             # Hide export button in live mode, restore live buttons
             if self.control_bar.btn_export in self.control_bar.children:
@@ -398,8 +409,6 @@ class DuctbotUI(BoxLayout):
                 self.control_bar.add_widget(self.control_bar.btn_flip)
             if self.control_bar.btn_lane not in self.control_bar.children:
                 self.control_bar.add_widget(self.control_bar.btn_lane)
-            if self.control_bar.btn_stop not in self.control_bar.children:
-                self.control_bar.add_widget(self.control_bar.btn_stop)
             toggle_btn.text = 'Playback'
             self.control_bar.btn_play.text = 'Start Recording'
             
@@ -478,6 +487,15 @@ class DuctbotUI(BoxLayout):
         filename = rec['filename']
         self.display_area.transition.direction = 'left'
         self.display_area.current = 'playback_video'
+        
+        # Show info panel
+        from controls import PlaybackInfoPanel
+        if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.main_body.children:
+            self.main_body.remove_widget(self.playback_info_panel)
+        self.playback_info_panel = PlaybackInfoPanel(callbacks={'stop': lambda x: self.stop_video()}, rec_data=rec)
+        self.left_panel.size_hint_x = 0.84
+        self.main_body.add_widget(self.playback_info_panel)
+        
         if self.capture:
             self.capture.release()
         self.capture = cv2.VideoCapture(filename)
@@ -612,9 +630,7 @@ class DuctbotUI(BoxLayout):
         self.is_recording = True
         self.is_recording_paused = False
         self.is_live_paused = False
-        if hasattr(self, 'control_bar') and hasattr(self.control_bar, 'btn_stop'):
-            self.control_bar.btn_stop.text = 'Stop'
-            self.control_bar.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
+        self.control_bar.btn_live.text = 'Stop'
         self.control_bar.btn_play.text = 'Pause Recording'
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -628,6 +644,7 @@ class DuctbotUI(BoxLayout):
         self.is_recording = False
         self.is_recording_paused = False
         self.control_bar.btn_play.text = 'Start Recording'
+        self.control_bar.btn_live.text = 'Playback'
         if self.video_writer:
             self.video_writer.release()
             self.video_writer = None
@@ -639,8 +656,8 @@ class DuctbotUI(BoxLayout):
                 self.capture.release()
                 self.capture = None
                 # Hide info panel for the table
-                if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.children:
-                    self.remove_widget(self.playback_info_panel)
+                if hasattr(self, 'playback_info_panel') and self.playback_info_panel in self.main_body.children:
+                    self.main_body.remove_widget(self.playback_info_panel)
                 self.left_panel.size_hint_x = 1.0
                 
                 # Go back to the video list with transition
@@ -681,13 +698,6 @@ class DuctbotUI(BoxLayout):
                 popup.open()
             else:
                 self.is_live_paused = not self.is_live_paused
-                if hasattr(self, 'control_bar') and hasattr(self.control_bar, 'btn_stop'):
-                    if self.is_live_paused:
-                        self.control_bar.btn_stop.text = 'Resume'
-                        self.control_bar.btn_stop.background_color = [0.2, 0.5, 0.2, 1]
-                    else:
-                        self.control_bar.btn_stop.text = 'Stop'
-                        self.control_bar.btn_stop.background_color = [0.6, 0.1, 0.1, 1]
 
     def toggle_lane(self, toggle_btn):
         self.lane_enabled = (toggle_btn.state == 'down')

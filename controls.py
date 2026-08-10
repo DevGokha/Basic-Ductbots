@@ -2,40 +2,109 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.label import Label
+from kivy.lang import Builder
+from kivy.factory import Factory
+
+KV = '''
+<CyberButton@Button>:
+    background_color: 0, 0, 0, 0
+    background_normal: ''
+    background_down: ''
+    color: 1, 1, 1, 1
+    font_size: '21sp'
+    font_name: 'Roboto' if 'Roboto' in self.font_name else 'sans-serif'
+    bold: True
+    canvas.before:
+        Color:
+            rgba: (0, 0.83, 1, 0.8) if self.state == 'down' else (0.1, 0.1, 0.2, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [20]
+        Color:
+            rgba: (0, 0.83, 1, 1) if self.state == 'normal' else (1, 1, 1, 1)
+        Line:
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            width: 1.2
+
+<CyberToggleButton@ToggleButton>:
+    background_color: 0, 0, 0, 0
+    background_normal: ''
+    background_down: ''
+    color: 1, 1, 1, 1
+    font_size: '21sp'
+    bold: True
+    canvas.before:
+        Color:
+            rgba: (0, 0.83, 1, 0.6) if self.state == 'down' else (0.1, 0.1, 0.2, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [20]
+        Color:
+            rgba: 0, 0.83, 1, 1
+        Line:
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            width: 1.2
+
+<RedButton@CyberButton>:
+    canvas.before:
+        Color:
+            rgba: (1, 0.2, 0.2, 0.8) if self.state == 'down' else (0.4, 0.05, 0.05, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [20]
+        Color:
+            rgba: (1, 0.2, 0.2, 1) if self.state == 'normal' else (1, 1, 1, 1)
+        Line:
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            width: 1.2
+
+<GreenButton@CyberButton>:
+    canvas.before:
+        Color:
+            rgba: (0.2, 0.6, 0.2, 0.8) if self.state == 'down' else (0.1, 0.4, 0.1, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [20]
+        Color:
+            rgba: (0.2, 0.8, 0.2, 1) if self.state == 'normal' else (1, 1, 1, 1)
+        Line:
+            rounded_rectangle: [self.x, self.y, self.width, self.height, 20]
+            width: 1.2
+'''
+Builder.load_string(KV)
 
 class BottomControlBar(BoxLayout):
     def __init__(self, callbacks, **kwargs):
-        super().__init__(size_hint_y=None, height='110dp', spacing=5, padding=5, **kwargs)
+        super().__init__(size_hint_y=None, height='82dp', spacing=5, padding=5, **kwargs)
 
         
         # Live/Playback toggle
-        self.btn_live = ToggleButton(text='Playback', state='normal', background_normal='', background_color=[0.25, 0.3, 0.35, 1])
+        self.btn_live = Factory.CyberToggleButton(text='Playback', state='normal')
         self.btn_live.bind(on_press=callbacks.get('toggle_live', lambda x: None))
         self.add_widget(self.btn_live)
         
         # Start/Pause button
-        self.btn_play = Button(text='Start Recording', background_normal='', background_color=[0.2, 0.5, 0.2, 1])
+        self.btn_play = Factory.GreenButton(text='Start Recording')
         self.btn_play.bind(on_press=callbacks.get('play_pause', lambda x: None))
         self.add_widget(self.btn_play)
         
         # Export button (created but not added to layout initially because we start in Live Mode)
-        self.btn_export = Button(text='Export', background_normal='', background_color=[0.7, 0.4, 0.1, 1])
+        self.btn_export = Factory.CyberButton(text='Export')
         self.btn_export.bind(on_press=callbacks.get('export', lambda x: None))
         
         # Flip camera button
-        self.btn_flip = Button(text='Flip Camera', background_normal='', background_color=[0.25, 0.3, 0.35, 1])
+        self.btn_flip = Factory.CyberButton(text='Flip Camera')
         self.btn_flip.bind(on_press=callbacks.get('flip', lambda x: None))
         self.add_widget(self.btn_flip)
         
         # Lane button
-        self.btn_lane = ToggleButton(text='Lane', background_normal='', background_color=[0.25, 0.3, 0.35, 1])
+        self.btn_lane = Factory.CyberToggleButton(text='Lane')
         self.btn_lane.bind(on_press=callbacks.get('toggle_lane', lambda x: None))
         self.add_widget(self.btn_lane)
-        
-        # Stop button
-        self.btn_stop = Button(text='Stop', background_normal='', background_color=[0.6, 0.1, 0.1, 1])
-        self.btn_stop.bind(on_press=callbacks.get('stop', lambda x: None))
-        self.add_widget(self.btn_stop)
 
 
 
@@ -43,8 +112,9 @@ class PlaybackInfoPanel(BoxLayout):
     def __init__(self, callbacks, rec_data, **kwargs):
         super().__init__(orientation='vertical', size_hint_x=0.16, spacing=5, padding=5, **kwargs)
         
+        from kivy.factory import Factory
         # Stop button
-        self.btn_stop = Button(text='Stop / Back', size_hint_y=0.2, background_normal='', background_color=[0.6, 0.1, 0.1, 1])
+        self.btn_stop = Factory.RedButton(text='Stop / Back', size_hint_y=0.15)
         self.btn_stop.bind(on_press=callbacks.get('stop', lambda x: None))
         self.add_widget(self.btn_stop)
         
@@ -60,18 +130,14 @@ class PlaybackInfoPanel(BoxLayout):
             dt_str = "Unknown"
 
         details = [
-            f"Date:\n{dt_str}",
-            f"Client:\n{rec_data.get('client', '')}",
-            f"Area:\n{rec_data.get('area', '')}",
-            f"Side:\n{rec_data.get('side', '')}",
-            f"Cond:\n{rec_data.get('condition', '')}",
-            f"Cam:\n{rec_data.get('camera', '')}"
+            dt_str,
+            rec_data.get('client', ''),
+            rec_data.get('area', ''),
+            rec_data.get('side', ''),
+            rec_data.get('condition', ''),
+            rec_data.get('camera', '')
         ]
         
-        for d in details:
-            lbl = Label(text=d, size_hint_y=0.15, halign='center', valign='middle')
-            lbl.bind(size=lbl.setter('text_size'))
-            self.add_widget(lbl)
         for d in details:
             lbl = Label(text=d, size_hint_y=0.15, halign='center', valign='middle')
             lbl.bind(size=lbl.setter('text_size'))
