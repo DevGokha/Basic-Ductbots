@@ -11,7 +11,7 @@ KV = '''
     background_normal: ''
     background_down: ''
     color: 1, 1, 1, 1
-    font_size: '21sp'
+    font_size: '50sp'
     font_name: 'Roboto' if 'Roboto' in self.font_name else 'sans-serif'
     bold: True
     canvas.before:
@@ -32,7 +32,7 @@ KV = '''
     background_normal: ''
     background_down: ''
     color: 1, 1, 1, 1
-    font_size: '21sp'
+    font_size: '50sp'
     bold: True
     canvas.before:
         Color:
@@ -81,29 +81,47 @@ class BottomControlBar(BoxLayout):
     def __init__(self, callbacks, **kwargs):
         super().__init__(size_hint_y=None, height='82dp', spacing=5, padding=5, **kwargs)
 
+        from kivy.uix.image import Image
+        from kivy.metrics import dp
+
+        def add_icon(btn, source):
+            icon = Image(source=source, size_hint=(None, None), size=(dp(24), dp(24)))
+            def update_icon(instance, value=None):
+                icon.center_y = instance.center_y
+                # Position icon 10dp to the left of the text
+                # instance.texture_size[0] is the width of the text
+                text_width = instance.texture_size[0]
+                icon.right = instance.center_x - (text_width / 2) - dp(10)
+            btn.bind(pos=update_icon, size=update_icon, texture_size=update_icon)
+            btn.add_widget(icon)
         
         # Live/Playback toggle
         self.btn_live = Factory.CyberToggleButton(text='Playback', state='normal')
         self.btn_live.bind(on_press=callbacks.get('toggle_live', lambda x: None))
+        add_icon(self.btn_live, 'playback_icon.png')
         self.add_widget(self.btn_live)
         
         # Start/Pause button
         self.btn_play = Factory.GreenButton(text='Start Recording')
         self.btn_play.bind(on_press=callbacks.get('play_pause', lambda x: None))
+        add_icon(self.btn_play, 'record_icon.png')
         self.add_widget(self.btn_play)
         
         # Export button (created but not added to layout initially because we start in Live Mode)
         self.btn_export = Factory.CyberButton(text='Export')
         self.btn_export.bind(on_press=callbacks.get('export', lambda x: None))
+        add_icon(self.btn_export, 'export_icon.png')
         
         # Flip camera button
         self.btn_flip = Factory.CyberButton(text='Flip Camera')
         self.btn_flip.bind(on_press=callbacks.get('flip', lambda x: None))
+        add_icon(self.btn_flip, 'flip_icon.png')
         self.add_widget(self.btn_flip)
         
         # Lane button
         self.btn_lane = Factory.CyberToggleButton(text='Lane')
         self.btn_lane.bind(on_press=callbacks.get('toggle_lane', lambda x: None))
+        add_icon(self.btn_lane, 'lane_icon.png')
         self.add_widget(self.btn_lane)
 
 
@@ -113,9 +131,21 @@ class PlaybackInfoPanel(BoxLayout):
         super().__init__(orientation='vertical', size_hint_x=0.16, spacing=5, padding=5, **kwargs)
         
         from kivy.factory import Factory
+        from kivy.uix.image import Image
+        from kivy.metrics import dp
+
         # Stop button
         self.btn_stop = Factory.RedButton(text='Stop / Back', size_hint_y=0.15)
         self.btn_stop.bind(on_press=callbacks.get('stop', lambda x: None))
+        
+        stop_icon = Image(source='stop_icon.png', size_hint=(None, None), size=(dp(24), dp(24)))
+        def update_stop_icon(instance, value=None):
+            stop_icon.center_y = instance.center_y
+            text_width = instance.texture_size[0]
+            stop_icon.right = instance.center_x - (text_width / 2) - dp(10)
+        self.btn_stop.bind(pos=update_stop_icon, size=update_stop_icon, texture_size=update_stop_icon)
+        self.btn_stop.add_widget(stop_icon)
+        
         self.add_widget(self.btn_stop)
         
         # Metadata labels

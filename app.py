@@ -364,7 +364,7 @@ class DuctbotUI(BoxLayout):
         App.get_running_app().stop()
 
     def toggle_live_mode(self, toggle_btn):
-        if toggle_btn.text == 'Stop':
+        if toggle_btn.text.strip() == 'Stop':
             toggle_btn.state = 'normal'
             self.stop_video()
             return
@@ -793,8 +793,9 @@ class DuctbotUI(BoxLayout):
                 else:
                     self.image.texture = texture
             else:
-                # Loop video if it ends in playback mode
+                # Stop video if it ends in playback mode
                 if self.playback_mode:
+                    self.is_paused = True
                     self.capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     def get_usb_drives(self):
