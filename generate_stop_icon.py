@@ -11,4 +11,4 @@ def draw_stop(draw):
     # A square
     draw.rectangle([(16, 16), (48, 48)], fill="white")
 
-create_icon("stop_icon.png", draw_stop)
+create_icon("icons/stop_icon.png", draw_stop)

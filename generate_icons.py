@@ -39,8 +39,8 @@ def draw_export(draw):
     draw.polygon([(20, 36), (44, 36), (32, 48)], fill="white")
     draw.line([(16, 52), (48, 52)], fill="white", width=6)
 
-create_icon("playback_icon.png", draw_playback)
-create_icon("record_icon.png", draw_record)
-create_icon("flip_icon.png", draw_flip)
-create_icon("lane_icon.png", draw_lane)
-create_icon("export_icon.png", draw_export)
+create_icon("icons/playback_icon.png", draw_playback)
+create_icon("icons/record_icon.png", draw_record)
+create_icon("icons/flip_icon.png", draw_flip)
+create_icon("icons/lane_icon.png", draw_lane)
+create_icon("icons/export_icon.png", draw_export)

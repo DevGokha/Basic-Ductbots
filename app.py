@@ -184,7 +184,7 @@ class DuctbotUI(BoxLayout):
         self.sensor_data = {"TOF_L": 100, "TOF_R": 100}
         
         # --- Top Bar (Header) - Spans full width ---
-        self.top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='46dp', padding=[20, 5, 20, 5], spacing=10)
+        self.top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='53dp', padding=[20, 5, 20, 5], spacing=10)
         with self.top_bar.canvas.before:
             Color(0.15, 0.15, 0.15, 1) # Dark background
             self.top_bar.bg_rect = Rectangle(size=self.top_bar.size, pos=self.top_bar.pos)
@@ -203,7 +203,7 @@ class DuctbotUI(BoxLayout):
         from kivy.metrics import dp
         self.btn_shutdown = Factory.RedButton(text='     Shutdown', size_hint_x=0.2)
         
-        self.power_icon = Image(source='power_icon.png', size_hint=(None, None), size=(dp(24), dp(24)))
+        self.power_icon = Image(source='icons/power_icon.png', size_hint=(None, None), size=(dp(24), dp(24)))
         def update_power_icon(instance, value):
             self.power_icon.center_y = instance.center_y
             self.power_icon.x = instance.x + dp(15)
@@ -478,6 +478,16 @@ class DuctbotUI(BoxLayout):
             btn_box = BoxLayout(size_hint_x=0.15, padding=[5, 5, 5, 5])
             btn_play = Button(text='Play', background_color=[0.2, 0.5, 0.2, 1], color=(1, 1, 1, 1))
             btn_play.bind(on_press=lambda instance, r=rec: self.start_playback_video(r))
+            
+            from kivy.metrics import dp
+            play_icon = Image(source='icons/playback_icon.png', size_hint=(None, None), size=(dp(16), dp(16)))
+            def update_play_icon(instance, value=None, icon=play_icon):
+                icon.center_y = instance.center_y
+                text_width = instance.texture_size[0]
+                icon.right = instance.center_x - (text_width / 2) - dp(8)
+            btn_play.bind(pos=update_play_icon, size=update_play_icon, texture_size=update_play_icon)
+            btn_play.add_widget(play_icon)
+            
             btn_box.add_widget(btn_play)
             
             row.add_widget(btn_box)
@@ -767,21 +777,42 @@ class DuctbotUI(BoxLayout):
                 
                 # Draw camera mode indicator (F or R)
                 cam_mode = getattr(self, 'current_camera', 'F')
+                # Black outline for visibility
+                cv2.putText(frame, f"Cam: {cam_mode}", (20, 60), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
                 cv2.putText(frame, f"Cam: {cam_mode}", (20, 60), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, CV2Colors.YELLOW, 2, cv2.LINE_AA)
                 
                 # Draw REC overlay if recording
                 if self.is_recording:
                     if self.is_recording_paused:
+                        cv2.circle(frame, (frame.shape[1] - 120, 40), 12, (0, 0, 0), -1)
                         cv2.circle(frame, (frame.shape[1] - 120, 40), 10, CV2Colors.YELLOW, -1)
+                        
+                        cv2.putText(frame, "PAUSED", (frame.shape[1] - 100, 45), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 4, cv2.LINE_AA)
                         cv2.putText(frame, "PAUSED", (frame.shape[1] - 100, 45), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, CV2Colors.YELLOW, 2, cv2.LINE_AA)
                     else:
                         # Flash logic using time.time()
                         if int(time.time() * 2) % 2 == 0:
+                            cv2.circle(frame, (frame.shape[1] - 80, 40), 12, (0, 0, 0), -1)
                             cv2.circle(frame, (frame.shape[1] - 80, 40), 10, CV2Colors.RED, -1)
+                            
+                            cv2.putText(frame, "REC", (frame.shape[1] - 60, 45), 
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 4, cv2.LINE_AA)
                             cv2.putText(frame, "REC", (frame.shape[1] - 60, 45), 
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, CV2Colors.RED, 2, cv2.LINE_AA)
+                elif not getattr(self, 'playback_mode', False):
+                    # Draw LIVE indicator (scaled down 0.75x)
+                    cv2.circle(frame, (frame.shape[1] - 85, 40), 9, (0, 0, 0), -1)
+                    cv2.circle(frame, (frame.shape[1] - 85, 40), 7, CV2Colors.GREEN, -1)
+                    
+                    cv2.putText(frame, "LIVE", (frame.shape[1] - 70, 45), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4, cv2.LINE_AA)
+                    cv2.putText(frame, "LIVE", (frame.shape[1] - 70, 45), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, CV2Colors.GREEN, 2, cv2.LINE_AA)
+
 
                 # We need to flip it vertically because Kivy's origin is bottom-left
                 frame = cv2.flip(frame, 0)
