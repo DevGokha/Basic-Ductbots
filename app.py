@@ -775,13 +775,14 @@ class DuctbotUI(BoxLayout):
                 if self.lane_enabled:
                     frame = self._draw_lane_guides(frame)
                 
-                # Draw camera mode indicator (F or R)
-                cam_mode = getattr(self, 'current_camera', 'F')
-                # Black outline for visibility
-                cv2.putText(frame, f"Cam: {cam_mode}", (20, 60), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
-                cv2.putText(frame, f"Cam: {cam_mode}", (20, 60), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, CV2Colors.YELLOW, 2, cv2.LINE_AA)
+                # Draw camera mode indicator (F or R) only in Live Mode
+                if not getattr(self, 'playback_mode', False):
+                    cam_mode = getattr(self, 'current_camera', 'F')
+                    # Black outline for visibility
+                    cv2.putText(frame, f"Cam: {cam_mode}", (20, 60), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
+                    cv2.putText(frame, f"Cam: {cam_mode}", (20, 60), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, CV2Colors.YELLOW, 2, cv2.LINE_AA)
                 
                 # Draw REC overlay if recording
                 if self.is_recording:

@@ -143,16 +143,31 @@ class PlaybackInfoPanel(BoxLayout):
         # Metadata labels
         self.add_widget(Label(text="Video Details", bold=True, size_hint_y=0.1))
         
-        import os, time
+        import os, time, cv2
         fname = os.path.basename(rec_data.get('filename', ''))
         try:
             ts_str = fname.replace('video_', '').split('.')[0]
             dt_str = time.strftime('%d/%m/%y %H:%M', time.localtime(int(ts_str)))
         except:
             dt_str = "Unknown"
+            
+        # Calculate Video Duration
+        duration_str = "00:00"
+        full_path = rec_data.get('filename', '')
+        if os.path.exists(full_path):
+            cap = cv2.VideoCapture(full_path)
+            if cap.isOpened():
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+                if fps > 0:
+                    duration_sec = int(frame_count / fps)
+                    mins, secs = divmod(duration_sec, 60)
+                    duration_str = f"Dur: {mins:02d}:{secs:02d}"
+                cap.release()
 
         details = [
             dt_str,
+            duration_str,
             rec_data.get('client', ''),
             rec_data.get('area', ''),
             rec_data.get('side', ''),
