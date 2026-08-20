@@ -547,11 +547,11 @@ class DuctbotUI(BoxLayout):
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
         
         # Upper right cross button
-        top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='30dp')
-        lbl_title = Label(text='Enter Recording Details:', size_hint_x=0.9)
+        top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='50dp')
+        lbl_title = Label(text='Enter Recording Details:', size_hint_x=0.85)
         lbl_title.bind(size=lbl_title.setter('text_size'))
         top_bar.add_widget(lbl_title)
-        self.rec_close_btn = Button(text="X", size_hint_x=0.1, background_color=[0.6, 0.1, 0.1, 1])
+        self.rec_close_btn = Button(text="X", size_hint_x=0.15, background_color=[0.6, 0.1, 0.1, 1])
         top_bar.add_widget(self.rec_close_btn)
         content.add_widget(top_bar)
         
@@ -586,7 +586,7 @@ class DuctbotUI(BoxLayout):
         content.add_widget(submit_btn)
         
         self.popup = Popup(title='Start Recording', content=content, size_hint=(0.6, 0.7))
-        self.rec_close_btn.bind(on_press=self.popup.dismiss)
+        self.rec_close_btn.bind(on_release=lambda *args: self.popup.dismiss())
         self.popup.open()
 
     def reset_submit_btn(self, instance):
@@ -850,9 +850,9 @@ class DuctbotUI(BoxLayout):
         content = BoxLayout(orientation='vertical', spacing=10, padding=10)
         
         # Upper right cross button
-        top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='30dp')
-        top_bar.add_widget(Label(text="", size_hint_x=0.9)) # Empty space
-        close_btn = Button(text="X", size_hint_x=0.1, background_color=[0.6, 0.1, 0.1, 1])
+        top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height='50dp')
+        top_bar.add_widget(Label(text="", size_hint_x=0.85)) # Empty space
+        close_btn = Button(text="X", size_hint_x=0.15, background_color=[0.6, 0.1, 0.1, 1])
         top_bar.add_widget(close_btn)
         content.add_widget(top_bar)
         
@@ -936,7 +936,7 @@ class DuctbotUI(BoxLayout):
         content.add_widget(btn_bar)
         
         self.export_popup = Popup(title='Export Manager', content=content, size_hint=(0.7, 0.8))
-        close_btn.bind(on_press=self.export_popup.dismiss)
+        close_btn.bind(on_release=lambda *args: self.export_popup.dismiss())
         self.export_popup.open()
 
     def execute_export(self, instance):
