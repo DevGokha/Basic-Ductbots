@@ -1,3 +1,8 @@
+import os
+os.environ["KIVY_KEYBOARD"] = "systemanddock"
+from kivy.config import Config
+Config.set('kivy', 'keyboard_mode', 'systemanddock')
+Config.set('graphics', 'fullscreen', 'auto')
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
