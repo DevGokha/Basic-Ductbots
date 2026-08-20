@@ -15,9 +15,11 @@ from kivy.uix.widget import Widget
 from kivy.clock import Clock
 from kivy.graphics.texture import Texture
 from kivy.graphics import Color, Rectangle
+from kivy.animation import Animation
 from kivy.uix.spinner import Spinner
 from kivy.uix.checkbox import CheckBox
 from kivy.uix.progressbar import ProgressBar
+from kivy.uix.video import Video
 import cv2
 import threading
 import json
@@ -1078,45 +1080,53 @@ class DuctbotUI(BoxLayout):
             threading.Thread(target=do_export, daemon=True).start()
 
 class SplashLoader(FloatLayout):
-    """
-    Displays a full-screen logo for a specified duration before
-    calling a callback to launch the main application interface.
-    """
-    def __init__(self, on_finish_callback, logo_path="logo.png", duration=10, **kwargs):
+    def __init__(self, on_finish_callback, duration=5, **kwargs):
         super().__init__(**kwargs)
         self.on_finish_callback = on_finish_callback
         
-        if not os.path.exists(logo_path):
-            print(f"[WARNING] Logo not found at {logo_path}")
+        # White background
+        with self.canvas.before:
+            Color(1, 1, 1, 1)
+            self.bg_rect = Rectangle(size=Window.size, pos=(0, 0))
             
-        # 1. Create and add the Logo Image widget
-        self.logo_widget = Image(
-            source=logo_path,
-            size_hint=(None, None),
-            size=Window.size,
-            pos=(0, 0),
-            fit_mode="contain" # Ensures the logo keeps its proportions
-        )
-        self.add_widget(self.logo_widget)
-
-        # 2. Bind the window resize event so the logo scales if the window changes
+        # Container to hold both parts of the logo
+        self.container = BoxLayout(orientation='vertical', size_hint=(0.8, 0.8), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        
+        # Original image was 770px high, split at 430
+        self.img_top = Image(source='logo_top.png', opacity=0, fit_mode='contain', size_hint_y=430/770)
+        self.img_bottom = Image(source='logo_bottom.png', opacity=0, fit_mode='contain', size_hint_y=340/770)
+        
+        self.container.add_widget(self.img_top)
+        self.container.add_widget(self.img_bottom)
+        
+        self.add_widget(self.container)
+        
         Window.bind(size=self._update_size)
         self._update_size()
 
-        # 3. Schedule the transition to the main UI after 'duration' seconds
+        # Schedule animations
+        # 1 second white screen, then show 4i
+        Clock.schedule_once(self.show_4i, 1.0)
+        # after 3 seconds total (2 seconds after 4i), show Roboserv
+        Clock.schedule_once(self.show_roboserv, 3.0)
+        # after 5 seconds total, finish and load main app
         Clock.schedule_once(self.finish, duration)
+        
+    def show_4i(self, dt):
+        anim = Animation(opacity=1, duration=0.5)
+        anim.start(self.img_top)
+        
+    def show_roboserv(self, dt):
+        anim = Animation(opacity=1, duration=0.5)
+        anim.start(self.img_bottom)
 
-    def finish(self, dt=None):
-        # Unbind the resize event and trigger the callback to load the main app
+    def finish(self, *args):
         Window.unbind(size=self._update_size)
         self.on_finish_callback()
 
     def _update_size(self, *args):
-        # Keep the layout and the logo matching the Window size
         self.size = Window.size
-        if hasattr(self, "logo_widget"):
-            self.logo_widget.size = Window.size
-            self.logo_widget.pos = (0, 0)
+        self.bg_rect.size = Window.size
 
 from kivy.lang import Builder
 
@@ -1133,7 +1143,7 @@ class DuctbotApp(App):
     font_size: '17sp'
 ''')
         self.root = FloatLayout()
-        splash = SplashLoader(on_finish_callback=self.load_main_app, logo_path="logo.png", duration=10)
+        splash = SplashLoader(on_finish_callback=self.load_main_app, duration=5)
         self.root.add_widget(splash)
         return self.root
 
